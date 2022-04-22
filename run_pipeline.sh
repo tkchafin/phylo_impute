@@ -9,15 +9,15 @@ doit() {
   threads=$2
 
   #make msa
-  Rscript --vanilla ./sim2phylip.R $infile
+  #Rscript --vanilla ./sim2phylip.R $infile
 
   #make popmap
-  cat $phylip | tail -n +2 | awk '{print $1}' | awk 'BEGIN{FS="."}{print $0 "\t" $1}' > $popmap
+  #cat $phylip | tail -n +2 | awk '{print $1}' | awk 'BEGIN{FS="."}{print $0 "\t" $1}' > $popmap
 
   #run iqtree
-  iqtree -s $phylip -m MFP -wsr -safe -redo -nt $threads
+  #iqtree -s $phylip -m MFP -wsr -safe -redo -nt $threads
   treefile=$phylip".treefile"
-  rate=$phylip.".rate"
+  rate=$phylip".rate"
   iqtree=$phylip".iqtree"
 
   #get imputation accuracy per method

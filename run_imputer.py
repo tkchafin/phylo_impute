@@ -165,6 +165,30 @@ def get_arguments():
     )
 
     optional_args.add_argument(
+        "--reps",
+        type=int,
+        required=False,
+        default=100,
+        help="Number of replicates for calculating accuracy (set to 0 to skip this step)",
+    )
+
+    optional_args.add_argument(
+        "--method",
+        type=str,
+        required=False,
+        default="global",
+        help="Imputation method. Must be one of: global, populations, phylo, phylo+q, phylo+q+r, or nmf",
+    )
+
+    optional_args.add_argument(
+        "--prop",
+        type=float,
+        required=False,
+        default=0.2,
+        help="Proportion of missing data to simulate for computing imputation accuracy (only if --reps > 0)",
+    )
+
+    optional_args.add_argument(
         "--resume_imputed",
         type=str,
         required=False,
