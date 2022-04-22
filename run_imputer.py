@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 
+import impute
+
 from impute.read_input.read_input import GenotypeData
 from impute.simple_imputers.simple_imputers import ImputePhylo
 

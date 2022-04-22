@@ -16,8 +16,12 @@ doit() {
 
   #run iqtree
   iqtree -s $phylip -m MFP -wsr -safe -redo -nt $threads
+  treefile=$phylip".treefile"
+  rate=$phylip.".rate"
+  iqtree=$phylip".iqtree"
 
   #get imputation accuracy per method
+  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate
 
   #run pca
 
