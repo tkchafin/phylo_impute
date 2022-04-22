@@ -41,7 +41,6 @@ from sklearn_genetic.space import Continuous, Categorical, Integer
 try:
     from .iterative_imputer_gridsearch import IterativeImputerGridSearch
     from .iterative_imputer_fixedparams import IterativeImputerFixedParams
-    from .neural_network_imputers import VAE, UBP
 
     from ..read_input.read_input import GenotypeData
     from . import simple_imputers
@@ -49,8 +48,6 @@ try:
     from ..utils.misc import isnotebook
     from ..utils.misc import timer
     from ..data_processing.transformers import (
-        UBPInputTransformer,
-        NNInputTransformer,
         MLPTargetTransformer,
         RandomizeMissingTransformer,
         ImputePhyloTransformer,
