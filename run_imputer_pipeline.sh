@@ -17,6 +17,10 @@ doit() {
   cat $phylip | tail -n +2 | awk '{print $1}' | awk 'BEGIN{FS="."}{print $0 "\t" $1}' > $popmap
   cat $popmap | sed 's/\tpop2/\tpop3/g' > $popmap2
 
+  #make smaller (just for testing)
+  #./nremover.pl -r 200 -t phylip -f $phylip
+  #mv $phylip".out" $phylip
+
   #run iqtree to get guidetree
   iqtree -s $phylip -m MFP -wsr -st DNA -safe -redo -nt $threads
   treefile=$phylip".treefile"
@@ -36,5 +40,6 @@ doit() {
 
 export -f doit
 
-ls missing_data_PCA/MISSdata/*.RData | parallel doit {}
+#doit missing_data_PCA/MISSdata/cline_mig50_SNP_biasINDV_miss0.01.RData 
+ls missing_data_PCA/MISSdata/*.RData | parallel -j 4 doit {}
 

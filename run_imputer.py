@@ -82,19 +82,26 @@ def main():
         )
 
 
-    #for each of random, nonrandom, and non-random weighted, do 100 replicates and get avg accuracy
-    out_string=str(args.phylip) + "\t" + str(args.method) + "\t" + str(args.prop) + "\t"
-    output=list()
-    if args.reps > 0:
-        for missing_type in ["random", "nonrandom", "nonrandom_weighted"]:
-            for i in range(1,args.reps+1):
-                out_i=out_string + str(missing_type) + "\t" + str(i) + "\t"
-                sim=SimGenotypeData(data, prop_missing=args.prop, strategy=missing_type)
-                print(sim)
-                imputed=ImputePhylo(genotype_data=sim)
-                #accuracy=
-                sys.exit()
-            
+    if args.method=="phylo":
+        data.q = None
+        data.site_rates=None
+        imputed=ImputePhylo(genotype_data=data, prefix=args.output)
+    elif args.method=="phyloq":
+        data.site_rates=None
+        imputed=ImputePhylo(genotype_data=data, prefix=args.output)
+    elif args.method=="phyloqr":
+        imputed=ImputePhylo(genotype_data=data, prefix=args.output)
+    elif args.method=="global":
+        imputed=ImputeAlleleFreq(genotype_data=data, by_populations=False, prefix=args.output)
+    elif "pop" in args.method:
+        imputed=ImputeAlleleFreq(genotype_data=data, by_populations=True, prefix=args.output)
+    elif args.method=="nmf":
+        imputed=ImputeNMF(genotype_data=data, latent_features=2, max_iter=1000, n_fail=100, prefix=args.output)
+    else:
+        print("No imputation method selected")
+        sys.exit()
+    
+    #imputed.decode_imputed(imputed.imputed012, write_output=True, prefix=args.output)    
 
 
 def get_arguments():
@@ -123,6 +130,10 @@ def get_arguments():
     filetype_args.add_argument(
         "-p", "--phylip", type=str, required=False, help="Input phylip file"
     )
+    filetype_args.add_argument(
+        "-o", "--output", type=str, required=False, help="prefix for output"
+    )
+
 
     filetype_args.add_argument(
         "-t",
@@ -182,35 +193,13 @@ def get_arguments():
     )
 
     optional_args.add_argument(
-        "--reps",
-        type=int,
-        required=False,
-        default=100,
-        help="Number of replicates for calculating accuracy (set to 0 to skip this step)",
-    )
-
-    optional_args.add_argument(
         "--method",
         type=str,
         required=False,
         default="global",
-        help="Imputation method. Must be one of: global, populations, phylo, phylo+q, phylo+q+r, or nmf",
+        help="Imputation method. Must be one of: global, populations, phylo, phyloq, phyloqr, or nmf",
     )
 
-    optional_args.add_argument(
-        "--prop",
-        type=float,
-        required=False,
-        default=0.2,
-        help="Proportion of missing data to simulate for computing imputation accuracy (only if --reps > 0)",
-    )
-
-    optional_args.add_argument(
-        "--resume_imputed",
-        type=str,
-        required=False,
-        help="Read in imputed data from a file instead of doing the imputation",
-    )
     # Add help menu
     optional_args.add_argument(
         "-h", "--help", action="help", help="Displays this help menu"
