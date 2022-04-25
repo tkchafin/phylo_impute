@@ -83,18 +83,42 @@ def main():
 
 
     #for each of random, nonrandom, and non-random weighted, do 100 replicates and get avg accuracy
-    out_string=str(args.phylip) + "\t" + str(args.method) + "\t" + str(args.prop) + "\t"
+    out_string=str(args.output) + "\t" + str(args.method) + "\t" + str(args.prop) + "\t"
     output=list()
     if args.reps > 0:
         for missing_type in ["random", "nonrandom", "nonrandom_weighted"]:
             for i in range(1,args.reps+1):
                 out_i=out_string + str(missing_type) + "\t" + str(i) + "\t"
-                sim=SimGenotypeData(data, prop_missing=args.prop, strategy=missing_type)
-                print(sim)
-                imputed=ImputePhylo(genotype_data=sim)
-                #accuracy=
-                sys.exit()
-            
+                sim=SimGenotypeData(data, prop_missing=args.prop, subset=0.1, strategy=missing_type)
+                #print(sim)
+                if args.method=="phylo":
+                    sim.q = None
+                    sim.site_rates=None
+                    imputed=ImputePhylo(genotype_data=sim)
+                elif args.method=="phyloq":
+                    sim.site_rates=None
+                    imputed=ImputePhylo(genotype_data=sim)
+                elif args.method=="phyloqr":
+                    imputed=ImputePhylo(genotype_data=sim)
+                elif args.method=="global":
+                    imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=False)
+                elif "pop" in args.method:
+                    imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True)
+                elif args.method=="nmf":
+                    imputed=ImputeNMF(genotype_data=sim, latent_features=2, max_iter=1000, n_fail=100)
+                else:
+                    print("No imputation method selected")
+                    sys.exit()
+                accuracy=sim.accuracy(imputed)
+                out_i=out_i + str(accuracy) + "\n"
+                output.append(out_i)
+                #print(out_i)
+                #sys.exit()
+
+    with open((str(args.output) + ".impute.out"), "w") as fh:
+        fh.writelines(output)
+
+                
 
 
 def get_arguments():
@@ -123,6 +147,10 @@ def get_arguments():
     filetype_args.add_argument(
         "-p", "--phylip", type=str, required=False, help="Input phylip file"
     )
+    filetype_args.add_argument(
+        "-o", "--output", type=str, required=False, help="prefix for output"
+    )
+
 
     filetype_args.add_argument(
         "-t",
@@ -194,7 +222,7 @@ def get_arguments():
         type=str,
         required=False,
         default="global",
-        help="Imputation method. Must be one of: global, populations, phylo, phylo+q, phylo+q+r, or nmf",
+        help="Imputation method. Must be one of: global, populations, phylo, phyloq, phyloqr, or nmf",
     )
 
     optional_args.add_argument(
