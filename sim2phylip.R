@@ -18,6 +18,8 @@ if (exists("rand")){
   dat <- biasINDV
 }else if (exists("biasPOP")){
   dat <- biasPOP
+}else if (exists("SNP")){
+  dat <- SNP
 }else{
   print(paste0("No data found: ",base))
 }
