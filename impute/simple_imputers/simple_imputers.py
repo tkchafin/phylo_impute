@@ -441,6 +441,8 @@ class ImputePhylo(GenotypeData):
                 q = self.q_from_file(self.qmatrix)
             elif self.qmatrix_iqtree is not None:
                 q = self.q_from_iqtree(self.qmatrix_iqtree)
+            else:
+                q = self._blank_q_matrix(1.0)
 
         elif genotype_data.q is not None:
             if self.qmatrix is not None:
