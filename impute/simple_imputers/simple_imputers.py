@@ -263,26 +263,6 @@ class ImputePhylo(GenotypeData):
             site_Q = Q.copy(deep=True) * rate
             # print(site_Q)
 
-            """
-            For each missing tip:
-                1. Extract list of all other missing tips
-                2. Prune those from tree
-                3. Re-root tree on focal tip
-                4. Compute likelihood by postorder traversal
-                5. Get ML states
-            Note: This is computationally heavy. Check out the two-pass algorithm
-            of Goolsby 2017
-            """
-
-            #two-pass method
-            """
-            1. get tree with missing tips pruned (actually just ignore them when calculating the likelihoods in postorder)
-            2. postorder traversal to get likelihood at root
-            3. preorder traversal to get marginal likelihoods for each internal node
-            4. compute marginal likelihoods for missing tips from their direct ancestor nodes
-            """
-
-
             bads = list()
             for samp in genotypes.keys():
                 if genotypes[samp][snp_index].upper() == "N":
