@@ -253,7 +253,6 @@ class ImputePhylo(GenotypeData):
             leave=True,
             disable=self.disable_progressbar,
         ):
-            node_lik = dict()
 
             # LATER: Need to get site rates
             rate = 1.0
@@ -263,104 +262,235 @@ class ImputePhylo(GenotypeData):
             site_Q = Q.copy(deep=True) * rate
             # print(site_Q)
 
-            # calculate state likelihoods for internal nodes
-            for node in tree.treenode.traverse("postorder"):
-                if node.is_leaf():
-                    continue
+            """
+            For each missing tip:
+                1. Extract list of all other missing tips
+                2. Prune those from tree
+                3. Re-root tree on focal tip
+                4. Compute likelihood by postorder traversal
+                5. Get ML states
+            Note: This is computationally heavy. Check out the two-pass algorithm
+            of Goolsby 2017
+            """
 
-                if node.idx not in node_lik:
-                    node_lik[node.idx] = None
 
-                for child in node.get_leaves():
-                    # get branch length to child
-                    # bl = child.edge.length
-                    # get transition probs
-                    pt = self._transition_probs(site_Q, child.dist)
-                    if child.is_leaf():
-                        if child.name in genotypes:
-                            # get genotype
-                            sum = None
-
-                            for allele in self._get_iupac_full(
-                                genotypes[child.name][snp_index]
-                            ):
-                                if sum is None:
-                                    sum = list(pt[allele])
-                                else:
-                                    sum = [
-                                        sum[i] + val
-                                        for i, val in enumerate(
-                                            list(pt[allele])
-                                        )
-                                    ]
-
-                            if node_lik[node.idx] is None:
-                                node_lik[node.idx] = sum
-
-                            else:
-                                node_lik[node.idx] = [
-                                    sum[i] * val
-                                    for i, val in enumerate(node_lik[node.idx])
-                                ]
-                        else:
-                            # raise error
-                            sys.exit(
-                                f"Error: Taxon {child.name} not found in "
-                                f"genotypes"
-                            )
-
-                    else:
-                        l = self._get_internal_lik(pt, node_lik[child.idx])
-                        if node_lik[node.idx] is None:
-                            node_lik[node.idx] = l
-
-                        else:
-                            node_lik[node.idx] = [
-                                l[i] * val
-                                for i, val in enumerate(node_lik[node.idx])
-                            ]
-
-            # infer most likely states for tips with missing data
-            # for each child node:
             bads = list()
             for samp in genotypes.keys():
                 if genotypes[samp][snp_index].upper() == "N":
                     bads.append(samp)
-                    # go backwards into tree until a node informed by
-                    # actual data
-                    # is found
-                    # node = tree.search_nodes(name=samp)[0]
-                    node = tree.idx_dict[
-                        tree.get_mrca_idx_from_tip_labels(names=samp)
-                    ]
-                    dist = node.dist
-                    node = node.up
-                    imputed = None
 
-                    while node and imputed is None:
-                        if self._all_missing(
-                            tree, node.idx, snp_index, genotypes
-                        ):
-                            dist += node.dist
-                            node = node.up
+            for samp in bads:
+                focaltree = tree.drop_tips(names=[x for x in bads if x != samp])
+                focaltree = focaltree.root(names=[samp])
+
+                mystyle = {
+                    "edge_type": "p",
+                    "edge_style": {
+                        "stroke-width": 1,
+                    },
+                    "tip_labels_align": True,
+                    "tip_labels_style": {"font-size": "5px"},
+                    "node_labels": False,
+                }
+
+                canvas, axes, mark = focaltree.draw()
+                toyplot.pdf.render(canvas, "test.pdf")
+
+                #postorder traversal to compute likelihood
+                node_lik = dict()
+                for node in focaltree.treenode.traverse("postorder"):
+                    if node.is_leaf():
+                        continue
+
+                    if node.idx not in node_lik:
+                        node_lik[node.idx] = None
+
+                    for child in node.get_leaves():
+                        # get branch length to child
+                        # bl = child.edge.length
+                        # get transition probs
+                        pt = self._transition_probs(site_Q, child.dist)
+                        if child.is_leaf():
+                            if child.name in genotypes:
+
+                                # skip focal tip
+                                if child.name == samp:
+                                    continue
+
+                                # get genotype data
+                                sum = None
+
+                                for allele in self._get_iupac_full(
+                                    genotypes[child.name][snp_index]
+                                ):
+                                    if sum is None:
+                                        sum = list(pt[allele])
+                                    else:
+                                        sum = [
+                                            sum[i] + val
+                                            for i, val in enumerate(
+                                                list(pt[allele])
+                                            )
+                                        ]
+
+                                if node_lik[node.idx] is None:
+                                    node_lik[node.idx] = sum
+
+                                else:
+                                    node_lik[node.idx] = [
+                                        sum[i] * val
+                                        for i, val in enumerate(node_lik[node.idx])
+                                    ]
+                            else:
+                                # raise error
+                                sys.exit(
+                                    f"Error: Taxon {child.name} not found in "
+                                    f"genotypes"
+                                )
 
                         else:
-                            pt = self._transition_probs(site_Q, dist)
-                            lik = self._get_internal_lik(pt, node_lik[node.idx])
-                            maxpos = lik.index(max(lik))
-                            if maxpos == 0:
-                                imputed = "A"
-
-                            elif maxpos == 1:
-                                imputed = "C"
-
-                            elif maxpos == 2:
-                                imputed = "G"
+                            l = self._get_internal_lik(pt, node_lik[child.idx])
+                            if node_lik[node.idx] is None:
+                                node_lik[node.idx] = l
 
                             else:
-                                imputed = "T"
+                                node_lik[node.idx] = [
+                                    l[i] * val
+                                    for i, val in enumerate(node_lik[node.idx])
+                                ]
 
-                    genotypes[samp][snp_index] = imputed
+                # get most likely state for focal tip
+                node = focaltree.idx_dict[
+                    focaltree.get_mrca_idx_from_tip_labels(names=samp)
+                ]
+                dist = node.dist
+                root = node.up
+                imputed = None
+                pt = self._transition_probs(site_Q, dist)
+                lik = self._get_internal_lik(pt, node_lik[root.idx])
+                maxpos = lik.index(max(lik))
+                if maxpos == 0:
+                    imputed = "A"
+
+                elif maxpos == 1:
+                    imputed = "C"
+
+                elif maxpos == 2:
+                    imputed = "G"
+
+                else:
+                    imputed = "T"
+
+                # g = [genotypes[x][snp_index] for x in genotypes]
+                # most_common = max(set(g), key=g.count)
+                # if most_common != imputed:
+                #     print(g)
+                #     print(lik)
+                #     print(imputed)
+                # print(lik)
+                # print(imputed)
+
+                genotypes[samp][snp_index] = imputed
+
+            # DEPRECATED
+            # NOTE: KEEPING CODE TO DEVELOP A PARSIMONY-LIKE APPROACH LATER
+            # # calculate state likelihoods for internal nodes
+            # for node in tree.treenode.traverse("postorder"):
+            #     if node.is_leaf():
+            #         continue
+            #
+            #     if node.idx not in node_lik:
+            #         node_lik[node.idx] = None
+            #
+            #     for child in node.get_leaves():
+            #         # get branch length to child
+            #         # bl = child.edge.length
+            #         # get transition probs
+            #         pt = self._transition_probs(site_Q, child.dist)
+            #         if child.is_leaf():
+            #             if child.name in genotypes:
+            #                 # get genotype
+            #                 sum = None
+            #
+            #                 for allele in self._get_iupac_full(
+            #                     genotypes[child.name][snp_index]
+            #                 ):
+            #                     if sum is None:
+            #                         sum = list(pt[allele])
+            #                     else:
+            #                         sum = [
+            #                             sum[i] + val
+            #                             for i, val in enumerate(
+            #                                 list(pt[allele])
+            #                             )
+            #                         ]
+            #
+            #                 if node_lik[node.idx] is None:
+            #                     node_lik[node.idx] = sum
+            #
+            #                 else:
+            #                     node_lik[node.idx] = [
+            #                         sum[i] * val
+            #                         for i, val in enumerate(node_lik[node.idx])
+            #                     ]
+            #             else:
+            #                 # raise error
+            #                 sys.exit(
+            #                     f"Error: Taxon {child.name} not found in "
+            #                     f"genotypes"
+            #                 )
+            #
+            #         else:
+            #             l = self._get_internal_lik(pt, node_lik[child.idx])
+            #             if node_lik[node.idx] is None:
+            #                 node_lik[node.idx] = l
+            #
+            #             else:
+            #                 node_lik[node.idx] = [
+            #                     l[i] * val
+            #                     for i, val in enumerate(node_lik[node.idx])
+            #                 ]
+            # # infer most likely states for tips with missing data
+            # # for each child node:
+            # bads = list()
+            # for samp in genotypes.keys():
+            #     if genotypes[samp][snp_index].upper() == "N":
+            #         bads.append(samp)
+            #         # go backwards into tree until a node informed by
+            #         # actual data
+            #         # is found
+            #         # node = tree.search_nodes(name=samp)[0]
+            #         node = tree.idx_dict[
+            #             tree.get_mrca_idx_from_tip_labels(names=samp)
+            #         ]
+            #         dist = node.dist
+            #         node = node.up
+            #         imputed = None
+            #
+            #         while node and imputed is None:
+            #             if self._all_missing(
+            #                 tree, node.idx, snp_index, genotypes
+            #             ):
+            #                 dist += node.dist
+            #                 node = node.up
+            #
+            #             else:
+            #                 pt = self._transition_probs(site_Q, dist)
+            #                 lik = self._get_internal_lik(pt, node_lik[node.idx])
+            #                 maxpos = lik.index(max(lik))
+            #                 if maxpos == 0:
+            #                     imputed = "A"
+            #
+            #                 elif maxpos == 1:
+            #                     imputed = "C"
+            #
+            #                 elif maxpos == 2:
+            #                     imputed = "G"
+            #
+            #                 else:
+            #                     imputed = "T"
+            #
+            #         genotypes[samp][snp_index] = imputed
 
             if self.save_plots:
                 self._draw_imputed_position(
