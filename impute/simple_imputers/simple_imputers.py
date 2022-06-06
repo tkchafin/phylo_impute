@@ -11,7 +11,7 @@ import toyplot.pdf
 import toyplot as tp
 import toytree as tt
 from decimal import Decimal
-
+from scipy.stats.distributions import chi2
 from sklearn.base import BaseEstimator, TransformerMixin
 
 # Custom imports
@@ -21,12 +21,14 @@ try:
     from ..utils.misc import get_processor_name
     from ..utils.misc import isnotebook
     from ..utils.misc import timer
+    from ..utils.misc import lrt
 except (ModuleNotFoundError, ValueError):
     from read_input.read_input import GenotypeData
     from utils import misc
     from utils.misc import get_processor_name
     from utils.misc import isnotebook
     from utils.misc import timer
+    from utils.misc import lrt
 
 is_notebook = isnotebook()
 
@@ -301,7 +303,6 @@ class ImputePhylo(GenotypeData):
                                                 list(pt[allele])
                                             )
                                             ]
-
                             node_lik[child.idx] = [Decimal(x) for x in sum]
 
                             #add to likelihood for parent node
@@ -352,20 +353,11 @@ class ImputePhylo(GenotypeData):
                 imputed = None
                 pt = self._transition_probs(site_Q, dist)
                 lik = self._get_internal_lik(pt, marg[parent.idx])
-                maxpos = lik.index(max(lik))
-                if maxpos == 0:
-                    imputed = "A"
 
-                elif maxpos == 1:
-                    imputed = "C"
+                tol = 0.001
+                imputed = self._get_imputed_nuc(lik, tol)
 
-                elif maxpos == 2:
-                    imputed = "G"
-
-                else:
-                    imputed = "T"
-                two_pass[samp] = [imputed, lik]
-
+                #two_pass[samp] = [imputed, lik]
                 genotypes[samp][snp_index] = imputed
 
             # DEPRECATED: RE-ROOTING METHOD OF YANG ET AL
@@ -601,6 +593,32 @@ class ImputePhylo(GenotypeData):
                 )
                 site_rates = self.siterates_from_iqtree(self.siterates_iqtree)
         return (data, tree, q, site_rates)
+
+
+    def _get_imputed_nuc(self, lik_arr):
+            nucmap = {
+                0 : "A",
+                1 : "C",
+                2 : "G",
+                3 : "T"
+            }
+            maxpos = lik_arr.index(max(lik_arr))
+            picks = set([maxpos])
+            # NOT USED:
+            # Experimenting with ways to impute heterozygotes.
+            # Note that LRT isn't appropriate (as I used here) because
+            # the models are not nested & LRTS isn't necessarily expected
+            # to be chisq distributed.
+            # Check out Vuong test and read Lewis et al 2011 (doi: 10.1111/j.2041-210X.2010.00063.x)
+            #
+            # for index, alt in enumerate(lik_arr):
+            #     if index == maxpos:
+            #         continue
+            #     else:
+            #         lr = lrt(lik_arr[maxpos], alt, loglik=False)
+            #         p = chi2.sf(lr)
+            #         print(nucmap[maxpos], ":", str(lrt(lik_arr[maxpos], alt, loglik=False)), p)
+            return(nucmap[maxpos])
 
     def _validate_arguments(self, genotype_data: Any) -> None:
         """Validate that the correct arguments were supplied.
