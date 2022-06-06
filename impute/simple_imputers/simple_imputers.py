@@ -355,7 +355,7 @@ class ImputePhylo(GenotypeData):
                 lik = self._get_internal_lik(pt, marg[parent.idx])
 
                 tol = 0.001
-                imputed = self._get_imputed_nuc(lik, tol)
+                imputed = self._get_imputed_nuc(lik)
 
                 #two_pass[samp] = [imputed, lik]
                 genotypes[samp][snp_index] = imputed
