@@ -185,6 +185,7 @@ class ImputePhylo(GenotypeData):
         else:
             self.imputed = self.impute_phylo(tree, data, q, site_rates)
 
+
     def impute_phylo(
         self,
         tree: tt.tree,
@@ -619,6 +620,31 @@ class ImputePhylo(GenotypeData):
             #         p = chi2.sf(lr)
             #         print(nucmap[maxpos], ":", str(lrt(lik_arr[maxpos], alt, loglik=False)), p)
             return(nucmap[maxpos])
+
+    def write2file(
+        self, X: Union[pd.DataFrame, np.ndarray, List[List[Union[int, float]]]]
+    ) -> None:
+        """Write imputed data to file on disk.
+
+        Args:
+            X (pandas.DataFrame, numpy.ndarray, List[List[Union[int, float]]]): Imputed data to write to file.
+
+        Raises:
+            TypeError: If X is of unsupported type.
+        """
+        outfile = f"{self.prefix}_imputed_012.csv"
+
+        if isinstance(X, pd.DataFrame):
+            df = X
+        elif isinstance(X, (np.ndarray, list)):
+            df = pd.DataFrame(X)
+        else:
+            raise TypeError(
+                f"Could not write imputed data because it is of incorrect "
+                f"type. Got {type(X)}"
+            )
+
+        df.to_csv(outfile, header=False, index=False)
 
     def _validate_arguments(self, genotype_data: Any) -> None:
         """Validate that the correct arguments were supplied.

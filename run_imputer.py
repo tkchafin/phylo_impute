@@ -81,7 +81,6 @@ def main():
             siterates_iqtree=args.rates,
         )
 
-
     if args.method=="phylo":
         data.q = None
         data.site_rates=None
@@ -100,8 +99,8 @@ def main():
     else:
         print("No imputation method selected")
         sys.exit()
-    
-    #imputed.decode_imputed(imputed.imputed012, write_output=True, prefix=args.output)    
+
+    #imputed.decode_imputed(imputed.imputed012, write_output=True, prefix=args.output)
 
 
 def get_arguments():
