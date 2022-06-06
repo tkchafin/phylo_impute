@@ -7,6 +7,7 @@ import platform
 import subprocess
 import re
 import logging
+import decimal
 
 import numpy as np
 import pandas as pd
@@ -68,6 +69,14 @@ def validate_input_type(X, return_type="array"):
             f"are 'df', 'array', and 'list'"
         )
 
+
+def lrt(lik1, lik2, loglik=True):
+    lik1 = decimal.Decimal(lik1)
+    lik2 = decimal.Decimal(lik2)
+    if loglik:
+        return (float(decimal.Decimal(2.0) * abs(lik1 - lik2)))
+    else:
+        return (float(decimal.Decimal(2.0) * abs((lik1.ln() - lik2.ln()))))
 
 def generate_random_dataset(
     min_value=0,
