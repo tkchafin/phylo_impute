@@ -1,0 +1,94 @@
+IQ-TREE 2.1.3 COVID-edition built Oct  4 2021
+
+Input file name: benchmark_i10_l10000_gtrgamma_base-snps-concat.fasta
+Type of analysis: tree reconstruction
+Random seed number: 952410
+
+REFERENCES
+----------
+
+To cite IQ-TREE please use:
+
+Bui Quang Minh, Heiko A. Schmidt, Olga Chernomor, Dominik Schrempf,
+Michael D. Woodhams, Arndt von Haeseler, and Robert Lanfear (2020)
+IQ-TREE 2: New models and efficient methods for phylogenetic inference
+in the genomic era. Mol. Biol. Evol., in press.
+https://doi.org/10.1093/molbev/msaa015
+
+SEQUENCE ALIGNMENT
+------------------
+
+Input data: 10 sequences with 10000 nucleotide sites
+Number of constant sites: 0 (= 0% of all sites)
+Number of invariant (constant or ambiguous constant) sites: 0 (= 0% of all sites)
+Number of parsimony informative sites: 4968
+Number of distinct site patterns: 3528
+
+SUBSTITUTION PROCESS
+--------------------
+
+Mixture model of substitution: MIX{GTR+F,GTR+F,GTR+F,GTR+F}*I+G4
+
+  No  Component      Rate    Weight   Parameters
+   1  GTR           1.0000   1.0000   GTR{0.984284,0.340374,0.0001,0.0745206,0.36852}+F{0.24919,0.25572,0.2479,0.24719}
+   2  GTR           1.0000   1.0000   GTR{1.69274,40.6719,11.355,11.4847,39.445}+F{0.24919,0.25572,0.2479,0.24719}
+   3  GTR           1.0000   1.0000   GTR{0.816547,0.586647,4.22137,4.11035,0.496533}+F{0.24919,0.25572,0.2479,0.24719}
+   4  GTR           1.0000   1.0000   GTR{0.979839,0.421851,0.905483,0.827285,0.442159}+F{0.24919,0.25572,0.2479,0.24719}
+
+Model of rate heterogeneity: Invar+Gamma with 4 categories
+Proportion of invariable sites: 0.0000
+Gamma shape alpha: 998.0642
+
+ Category  Relative_rate  Proportion
+  1         0.9601         0.2500
+  2         0.9894         0.2500
+  3         1.0100         0.2500
+  4         1.0405         0.2500
+Relative rates are computed as MEAN of the portion of the Gamma distribution falling in the category.
+
+MAXIMUM LIKELIHOOD TREE
+-----------------------
+
+Log-likelihood of the tree: -81961.0384 (s.e. 266.5896)
+Unconstrained log-likelihood (without tree): -70909.2785
+Number of free parameters (#branches + #model parameters): 42
+Akaike information criterion (AIC) score: 164006.0767
+Corrected Akaike information criterion (AICc) score: 164006.4395
+Bayesian information criterion (BIC) score: 164308.9110
+
+Total tree length (sum of branch lengths): 2.0346
+Sum of internal branch lengths: 0.5001 (24.5776% of tree length)
+
+NOTE: Tree is UNROOTED although outgroup taxon 'r0' is drawn at root
+
++---------------r0
+|
++---------------r1
+|
+|             +--------------r2
+|      +------|
+|      |      +-------------r3
++------|
+       |                            +------r4
+       |                    +-------|
+       |                    |       +-------r5
+       |             +------|
+       |             |      +---------------r6
+       |      +------|
+       |      |      +-----------------------r7
+       +------|
+              |             +------------------------------r8
+              +-------------|
+                            +-----------------------------r9
+
+Tree in newick format:
+
+(r0:0.1385579031,r1:0.1399289481,((r2:0.1317570871,r3:0.1193537908):0.0665515225,((((r4:0.0631215136,r5:0.0679937309):0.0690462540,r6:0.1421704855):0.0613240205,r7:0.2048589744):0.0635519544,(r8:0.2674429641,r9:0.2593602358):0.1203032820):0.0594778791):0.0598023721);
+
+TIME STAMP
+----------
+
+Date and time: Fri Sep  2 00:08:30 2022
+Total CPU time used: 71.0344 seconds (0h:1m:11s)
+Total wall-clock time used: 37.8164 seconds (0h:0m:37s)
+
