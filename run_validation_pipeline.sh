@@ -5,9 +5,9 @@ doit() {
 
   infile=$1
   phylip=$infile
-  popmap=`echo $infile | sed 's/.RData/.popmap/'`
-  popmap2=`echo $infile | sed 's/.RData/.popmap2/'`
-  output=`echo $infile | sed 's/.RData//'`
+  popmap=`echo $infile | sed 's/.phylip/.popmap/'`
+  popmap2=`echo $infile | sed 's/.phylip/.popmap2/'`
+  output=`echo $infile | sed 's/.phylip//'`
   threads=1
 
   #make msa
