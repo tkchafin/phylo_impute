@@ -4,7 +4,7 @@
 doit() {
 
   infile=$1
-  phylip=`echo $infile | sed 's/.RData/.phy/'`
+  phylip=$infile
   popmap=`echo $infile | sed 's/.RData/.popmap/'`
   popmap2=`echo $infile | sed 's/.RData/.popmap2/'`
   output=`echo $infile | sed 's/.RData//'`
