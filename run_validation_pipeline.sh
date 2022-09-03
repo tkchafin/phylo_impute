@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 
 doit() {
@@ -11,7 +11,7 @@ doit() {
   threads=1
 
   #make msa
-  Rscript --vanilla ./sim2phylip.R $infile
+  #Rscript --vanilla ./sim2phylip.R $infile
 
   #make popmap
   cat $phylip | tail -n +2 | awk '{print $1}' | awk 'BEGIN{FS="."}{print $0 "\t" $1}' > $popmap
@@ -21,9 +21,9 @@ doit() {
   #./nremover.pl -i 1.0 -c 0.5 -m -b -r 1000 -t phylip -f $phylip
 
   #run iqtree
-  iqtree -s $phylip -m MFP -wsr -st DNA -safe -redo -nt $threads
+  #iqtree -s $phylip -m MFP -wsr -st DNA -safe -redo -nt $threads
   treefile=$phylip".treefile"
-  rate=$phylip".rate"
+  rate=$phylip".mlrate"
   iqtree=$phylip".iqtree"
 
   #get imputation accuracy per method
@@ -39,4 +39,4 @@ doit() {
 
 export -f doit
 
-ls missing_data_PCA/simulation/*replicate*RData | parallel doit {}
+ls simulation/*/*/*.phylip | head -1 | parallel doit {}

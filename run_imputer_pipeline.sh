@@ -1,30 +1,31 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 
 doit() {
 
   infile=$1
-  phylip=`echo $infile | sed 's/.RData/.phy/'`
-  popmap=`echo $infile | sed 's/.RData/.popmap/'` 
+  phylip=$infile
+  popmap=`echo $infile | sed 's/.RData/.popmap/'`
   popmap2=`echo $infile | sed 's/.RData/.popmap2/'`
-  output=`echo $infile | sed 's/.RData//'`
+  output=`echo $infile | sed 's/.phylip//'`
   threads=1
 
   #make msa
-  Rscript --vanilla ./sim2phylip.R $infile
+  # Rscript --vanilla ./scripts/sim2phylip.R $infile
 
   #make popmap
   cat $phylip | tail -n +2 | awk '{print $1}' | awk 'BEGIN{FS="."}{print $0 "\t" $1}' > $popmap
   cat $popmap | sed 's/\tpop2/\tpop3/g' > $popmap2
 
   #make smaller (just for testing)
-  #./nremover.pl -r 200 -t phylip -f $phylip
+  #./scripts/nremover.pl -r 200 -t phylip -f $phylip
   #mv $phylip".out" $phylip
 
   #run iqtree to get guidetree
-  iqtree -s $phylip -m MFP -wsr -st DNA -safe -redo -nt $threads
-  treefile=$phylip".treefile"
-  rate=$phylip".rate"
+  # Add -redo to overwrite
+  #iqtree -s $phylip -m MFP -wsr -st DNA -safe -nt $threads
+  treefile=$phylip".rooted.tre"
+  rate=$phylip".mlrate"
   iqtree=$phylip".iqtree"
 
   #get imputation accuracy per method
@@ -36,10 +37,19 @@ doit() {
   python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phyloqr" -o $output"_phyloqr"
   python3 ./run_imputer.py -p $phylip -m $popmap2 -t $treefile -i $iqtree -r $rate --method "population2" -o $output"_popWrong"
 
+
+  #make structure files (easier to import to adegenet)
+  #./scripts/phylip2structure.pl -i $output"_global_imputed.phy" -o $output"_global_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_pop_imputed.phy" -o $output"_pop_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_nmf_imputed.phy" -o $output"_nmf_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_phylo_imputed.phy" -o $output"_phylo_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_phyloq_imputed.phy" -o $output"_phyloq_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_phyloqr_imputed.phy" -o $output"_phyloqr_imputed.str" -p $popmap
+  #./scripts/phylip2structure.pl -i $output"_popWrong_imputed.phy" -o $output"_popWrong_imputed.str" -p $popmap
+
 }
 
 export -f doit
 
-#doit missing_data_PCA/MISSdata/cline_mig50_SNP_biasINDV_miss0.01.RData 
-ls missing_data_PCA/MISSdata/*.RData | parallel -j 4 doit {}
-
+#doit missing_data_PCA/MISSdata/cline_mig50_SNP_biasINDV_miss0.01.RData
+ls simulation/*/*/*.phylip |head -1 | parallel -j 8 doit {}
