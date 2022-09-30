@@ -5,8 +5,8 @@ doit() {
 
   infile=$1
   phylip=$infile
-  popmap=`echo $infile | sed 's/.RData/.popmap/'`
-  popmap2=`echo $infile | sed 's/.RData/.popmap2/'`
+  popmap=`echo $infile | sed 's/.phylip/.popmap/'`
+  popmap2=`echo $infile | sed 's/.phylip/.popmap2/'`
   output=`echo $infile | sed 's/.phylip//'`
   threads=1
 
@@ -28,14 +28,17 @@ doit() {
   rate=$phylip".mlrate"
   iqtree=$phylip".iqtree"
 
+	echo $phylip
+	echo $popmap
+
   #get imputation accuracy per method
   python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "global" -o $output"_global"
-  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "population" -o $output"_pop"
-  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "nmf" -o $output"_nmf"
-  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phylo" -o $output"_phylo"
-  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phyloq" -o $output"_phyloq"
-  python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phyloqr" -o $output"_phyloqr"
-  python3 ./run_imputer.py -p $phylip -m $popmap2 -t $treefile -i $iqtree -r $rate --method "population2" -o $output"_popWrong"
+  #python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "population" -o $output"_pop"
+  #python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "nmf" -o $output"_nmf"
+  #python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phylo" -o $output"_phylo"
+  #python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phyloq" -o $output"_phyloq"
+  #python3 ./run_imputer.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --method "phyloqr" -o $output"_phyloqr"
+  #python3 ./run_imputer.py -p $phylip -m $popmap2 -t $treefile -i $iqtree -r $rate --method "population2" -o $output"_popWrong"
 
 
   #make structure files (easier to import to adegenet)
