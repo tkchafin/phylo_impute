@@ -1047,7 +1047,7 @@ class GenotypeData:
 			"C/A": "M",
 		}
 
-		df_decoded = df.copy()
+		df_decoded = df.copy().astype(object)
 		print(df_decoded)
 		dreplace = dict()
 		for col, ref, alt in zip(df.columns, self.ref, self.alt):
@@ -1062,7 +1062,7 @@ class GenotypeData:
 				ref2 = nuc[ref2]
 				alt2 = nuc[alt2]
 				het2 = nuc[het2]
-			d = {"0": str(ref2), 0: str(ref2), "1": str(het2), 1: str(het2), "2": str(alt2), 2: str(alt2)}
+			d = {"0": ref2, 0: ref2, "1": het2, 1: het2, "2": alt2, 2: alt2}
 			dreplace[col] = d
 
 		df_decoded.replace(dreplace, inplace=True)
