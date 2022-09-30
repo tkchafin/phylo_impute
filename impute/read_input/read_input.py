@@ -1048,7 +1048,7 @@ class GenotypeData:
 		}
 
 		df_decoded = df.copy()
-
+		print(df_decoded)
 		dreplace = dict()
 		for col, ref, alt in zip(df.columns, self.ref, self.alt):
 			# if site is monomorphic, set alt and ref state the same
