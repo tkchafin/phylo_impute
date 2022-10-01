@@ -95,18 +95,18 @@ def main():
 				if args.method=="phylo":
 					sim.q = None
 					sim.site_rates=None
-					imputed=ImputePhylo(genotype_data=sim)
+					imputed=ImputePhylo(genotype_data=sim, write_output=False)
 				elif args.method=="phyloq":
 					sim.site_rates=None
-					imputed=ImputePhylo(genotype_data=sim)
+					imputed=ImputePhylo(genotype_data=sim, write_output=False)
 				elif args.method=="phyloqr":
-					imputed=ImputePhylo(genotype_data=sim)
+					imputed=ImputePhylo(genotype_data=sim, write_output=False)
 				elif args.method=="global":
-					imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=False)
+					imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=False, write_output=False)
 				elif "pop" in args.method:
-					imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True)
+					imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True, write_output=False)
 				elif args.method=="nmf":
-					imputed=ImputeNMF(genotype_data=sim, latent_features=2, max_iter=1000, n_fail=100)
+					imputed=ImputeNMF(genotype_data=sim, latent_features=2, max_iter=1000, n_fail=100, write_output=False)
 				else:
 					print("No imputation method selected")
 					sys.exit()
