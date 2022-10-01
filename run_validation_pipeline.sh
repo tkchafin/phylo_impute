@@ -29,19 +29,19 @@ doit() {
 	#
   # #get imputation accuracy per method
   python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "global" -o $output"_global"
-	cp $output* output/
+	cp *.out output/
   python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "population" -o $output"_pop"
-	cp $output* output/
+	cp *.out output/
 	python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "nmf" -o $output"_nmf"
-	cp $output* output/
+	cp *.out output/
   python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "phylo" -o $output"_phylo"
-	cp $output* output/
+	cp *.out output/
   python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "phyloq" -o $output"_phyloq"
-	cp $output* output/
+	cp *.out output/
   python3 ./run_validation.py -p $phylip -m $popmap -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "phyloqr" -o $output"_phyloqr"
-	cp $output* output/
+	cp *.out output/
   python3 ./run_validation.py -p $phylip -m $popmap2 -t $treefile -i $iqtree -r $rate --reps 20 --prop 0.2 --method "population2" -o $output"_popWrong"
-	cp $output* output/
+	cp *.out output/
 }
 
 export -f doit
