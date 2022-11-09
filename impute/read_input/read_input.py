@@ -23,12 +23,12 @@ except (ModuleNotFoundError, ValueError):
 class GenotypeData:
 	"""Read genotype and tree data and encode genotypes.
 
-	Reads in a PHYLIP or STRUCTURE-formatted input file and converts the genotypes to 012 or one-hot encodings.
+	Reads in a variant (VCF, Structure) or multiple-sequence alignment (PHYLIP) input file and converts the genotypes to 012 or one-hot encodings.
 
 	Args:
 			filename (str or None): Path to input file containing genotypes. Defaults to None.
 
-			filetype (str or None): Type of input genotype file. Possible ``filetype`` values include: "phylip", "structure1row", or "structure2row". VCF compatibility may be added in the future, but is not currently supported. Defaults to None.
+			filetype (str or None): Type of input genotype file. Possible ``filetype`` values include: "phylip", "structure1row", "structure2row", or "vcf". Defaults to None.
 
 			popmapfile (str or None): Path to population map file. If ``popmapfile`` is supplied and ``filetype`` is one of the STRUCTURE formats, then the structure file is assumed to have NO popID column. Defaults to None.
 
@@ -48,6 +48,8 @@ class GenotypeData:
 			samples (List[str]): List containing sample IDs of shape (n_samples,).
 
 			snps (List[List[str]]): 2D list of shape (n_samples, n_sites) containing genotypes.
+
+			gaps (numpy.ndarray): 2D boolean array of shape (n_samples, n_sites) masking indels
 
 			pops (List[str]): List of population IDs of shape (n_samples,).
 
@@ -106,6 +108,7 @@ class GenotypeData:
 		self.snpsdict: Dict[str, List[Union[str, int]]] = dict()
 		self.samples: List[str] = list()
 		self.snps: List[List[int]] = list()
+		self.gaps: np.ndarray = None
 		self.pops: List[Union[str, int]] = list()
 		self.onehot: Union[np.ndarray, List[List[List[float]]]] = list()
 		self.ref = list()
@@ -233,6 +236,9 @@ class GenotypeData:
 				else:
 					raise OSError(f"Unsupported filetype provided: {filetype}")
 
+			elif filetype.lower() == "vcf":
+				self.filetype = filetype
+				self.read_vcf()
 			else:
 				raise OSError(f"Unsupported filetype provided: {filetype}\n")
 
@@ -597,6 +603,9 @@ class GenotypeData:
 		# Convert snp_data to onehot format.
 		self.convert_onehot(snp_data)
 
+		# population self.mask
+		self.get_gap_mask(snp_data)
+
 		if self.verbose:
 			print("Done!")
 			print("\nConverting genotypes to 012 encoding...")
@@ -615,6 +624,13 @@ class GenotypeData:
 			raise ValueError(
 				"Incorrect number of individuals listed in header\n"
 			)
+
+	def get_gap_mask(self, snps: List[List[str]]):
+		self.gaps = np.zeros((len(snps), len(snps[0])))
+		for i in range(len(snps)):
+			for j in range(len(snps[0])):
+				if snps[i][j] == "-":
+					self.gaps[i][j] = 1
 
 	def read_phylip_tree_imputation(self, aln: str) -> Dict[str, List[str]]:
 		"""Function to read an alignment file.
@@ -1010,13 +1026,15 @@ class GenotypeData:
 			if sample in my_popmap:
 				self.pops.append(my_popmap[sample])
 
-	def decode_imputed(self, X, write_output=True, prefix="output"):
+	def decode_imputed(self, X, write_output=True, imputed_gaps=False, prefix="output"):
 		"""Decode 012-encoded imputed data to STRUCTURE or PHYLIP format.
 
 		Args:
 			X (pandas.DataFrame, numpy.ndarray, or List[List[int]]): 012-encoded imputed data to decode.
 
 			write_output (bool, optional): If True, saves output to file on disk. Otherwise just makes a GenotypeData attribute. Defaults to True.
+
+			imputed_gaps (bool, optional): If True, uses imputed states for indels in the input data. Otherwise, these will be outputted as gap characters ("-")
 
 			prefix (str, optional): Prefix to append to output file. Defaults to "output".
 
@@ -1066,6 +1084,10 @@ class GenotypeData:
 			dreplace[col] = d
 
 		df_decoded.replace(dreplace, inplace=True)
+
+		if not imputed_gaps:
+			if self.gaps is not None:
+					df_decoded.mask(self.gaps.astype(bool), other="-", inplace=True)
 
 		ft = self.filetype.lower()
 

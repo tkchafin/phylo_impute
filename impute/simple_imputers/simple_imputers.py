@@ -264,7 +264,6 @@ class ImputePhylo(GenotypeData):
                 rate = site_rates[snp_index]
 
             site_Q = Q.copy(deep=True) * rate
-            # print(site_Q)
 
             bads = list()
             for samp in genotypes.keys():
