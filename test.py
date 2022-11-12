@@ -23,7 +23,6 @@ def main():
 		filetype="phylip",
 		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap"
 	)
-	print(data.snps)
 	imputed=ImputeAlleleFreq(genotype_data=data, by_populations=False, prefix="test_output")
 
 if __name__ == "__main__":
