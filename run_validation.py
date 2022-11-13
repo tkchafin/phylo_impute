@@ -119,9 +119,6 @@ def main():
 	with open((str(args.output) + ".impute.out"), "w") as fh:
 		fh.writelines(output)
 
-
-
-
 def get_arguments():
 	"""[Parse command-line arguments. Imported with argparse]
 

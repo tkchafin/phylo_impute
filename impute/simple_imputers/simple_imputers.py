@@ -1165,7 +1165,7 @@ class ImputeAlleleFreq(GenotypeData):
 						bad_cnt += 1
 						# Impute with global mode, unkless globally missing in which case call as 0.0
 						if df[col].isna().all():
-							data[col] = df[col].fillna(0.0)
+							data[col] = df[col].fillna(0.0, inplace=False)
 						else:
 							data[col] = df[col].fillna(df[col].mode().iloc[0])
 					else:

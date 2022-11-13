@@ -19,12 +19,14 @@ from impute.simple_imputers.simple_imputers import ImputeAlleleFreq
 
 def main():
 	data = GenotypeData(
-		filename="/Users/tyler/programs/scripts/test_files/internal_gaps.phylip",
+		filename="/home/tkchafin/cov_impute/lanfear_tree/all_seqs.align_targets.gapfix.phylip",
 		filetype="phylip",
-		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap"
+		siterates_iqtree="/home/tkchafin/cov_impute/lanfear_tree/all_seqs.align_targets.phylip.rate",
+		qmatrix_iqtree="/home/tkchafin/cov_impute/lanfear_tree/all_seqs.align_targets.phylip.iqtree",
+		guidetree="/home/tkchafin/cov_impute/lanfear_tree/all_seqs.align_targets.phylip.treefile"
 	)
 	sim=SimGenotypeData(data, prop_missing=0.2, strategy="random")
-	imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True, prefix="test_output")
+	imputed=ImputePhylo(genotype_data=sim, prefix="test_output")
 	print(sim.accuracy(imputed))
 	print(sim.accuracy_by_site(imputed))
 	print(sim.missingness_by_site())
