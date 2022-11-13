@@ -972,7 +972,7 @@ class GenotypeData:
 					onehot_list.append(onehot_dict[snp_data[i][j]])
 				onehot_outer_list.append(onehot_list)
 
-			self.onehot = np.array(onehot_outer_list)
+			self.onehot = np.array(onehot_outer_list, dtype=np.float32)
 
 		else:
 			for i in range(len(snp_data)):
@@ -981,7 +981,7 @@ class GenotypeData:
 					onehot_list.append(onehot_dict[snp_data[i][j]])
 				onehot_outer_list.append(onehot_list)
 
-			return np.array(onehot_outer_list)
+			return np.array(onehot_outer_list, dtype=np.float32)
 
 	def read_popmap(self, popmapfile: Optional[str]) -> None:
 		"""Read population map from file.
