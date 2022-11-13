@@ -581,7 +581,7 @@ class GenotypeData:
 					continue
 				cols = line.split()
 				inds = cols[0]
-				seqs = cols[1]
+				seqs = cols[1].upper()
 				snps = [snp for snp in seqs]  # Split each site.
 
 				# Error handling if incorrect sequence length
