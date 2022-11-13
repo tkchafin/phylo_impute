@@ -18,17 +18,20 @@ from impute.simple_imputers.simple_imputers import ImputeAlleleFreq
 
 
 def main():
+	prefix="test"
 	data = GenotypeData(
 		filename="/Users/tyler/programs/scripts/test_files/internal_gaps.phylip",
 		filetype="phylip",
 		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap"
 	)
 	sim=SimGenotypeData(data, prop_missing=0.2, strategy="random")
-	imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True, prefix="test_output")
-	print(sim.accuracy(imputed))
-	print(sim.accuracy_by_site(imputed))
-	print(sim.missingness_by_site())
-	print(sim.missingness_by_site(mask=True))
+	imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True, prefix=prefix+"_phylo")
+	np.savetxt(prefix+"_acc.tsv", np.array([sim.accuracy(imputed)]), fmt='%-10.5f')
+	np.savetxt(prefix+"_accBySite.tsv", sim.accuracy_by_site(imputed), fmt='%-10.5f')
+	np.savetxt(prefix+"_missBySite.tsv", sim.missingness_by_site(mask=False), fmt='%-10.5f')
+	np.savetxt(prefix+"_maskBySite.tsv", sim.missingness_by_site(mask=True), fmt='%-10.5f')
+	sim.decode_imputed(sim.genotypes012_df, prefix=prefix+"_sim")
+	np.savetxt(prefix+"_mask.tsv", sim.mask, fmt='%-1d')
 
 if __name__ == "__main__":
     main()

@@ -1087,7 +1087,10 @@ class GenotypeData:
 
 		if not imputed_gaps:
 			if self.gaps is not None:
-					df_decoded.mask(self.gaps.astype(bool), other="-", inplace=True)
+					df_decoded = df_decoded.mask(self.gaps.astype(bool), other="-", inplace=False)
+
+		#replace any remaining nans with N characters
+		df_decoded.fillna("N", inplace=True)
 
 		ft = self.filetype.lower()
 
