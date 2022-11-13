@@ -741,15 +741,12 @@ class GenotypeData:
 					ref = sequence_tools.get_major_allele(loc, vcf=vcf)
 					ref = str(ref[0])
 					alt = None
+					bads = ["-", "-9", "N", "V", "H", "D", "B"]
 
 					if vcf:
 						for i in range(0, len(snps)):
 							gen = snps[i][j].split("/")
-							if gen[0] in ["-", "-9", "N"] or gen[1] in [
-								"-",
-								"-9",
-								"N",
-							]:
+							if gen[0] in bads or gen[1] in bads:
 								new_snps[i].append(-9)
 
 							elif gen[0] == gen[1] and gen[0] == ref:
@@ -759,7 +756,7 @@ class GenotypeData:
 								new_snps[i].append(1)
 					else:
 						for i in range(0, len(snps)):
-							if loc[i] in ["-", "-9", "N"]:
+							if loc[i] in bads:
 								new_snps[i].append(-9)
 
 							elif loc[i] == ref:
@@ -784,11 +781,7 @@ class GenotypeData:
 					if vcf:
 						for i in range(0, len(snps)):
 							gen = snps[i][j].split("/")
-							if gen[0] in ["-", "-9", "N"] or gen[1] in [
-								"-",
-								"-9",
-								"N",
-							]:
+							if gen[0] in bads or gen[1] in bads:
 								new_snps[i].append(-9)
 
 							elif gen[0] == gen[1] and gen[0] == ref:
@@ -805,7 +798,7 @@ class GenotypeData:
 								new_snps[i].append(1)
 					else:
 						for i in range(0, len(snps)):
-							if loc[i] in ["-", "-9", "N"]:
+							if loc[i] in bads:
 								new_snps[i].append(-9)
 
 							elif loc[i] == ref:
@@ -829,11 +822,7 @@ class GenotypeData:
 				if vcf:
 					for i in range(0, len(snps)):
 						gen = snps[i][j].split("/")
-						if gen[0] in ["-", "-9", "N"] or gen[1] in [
-							"-",
-							"-9",
-							"N",
-						]:
+						if gen[0] in bads or gen[1] in bads:
 							new_snps[i].append(-9)
 
 						elif gen[0] == gen[1] and gen[0] == ref:
@@ -846,7 +835,7 @@ class GenotypeData:
 							new_snps[i].append(1)
 				else:
 					for i in range(0, len(snps)):
-						if loc[i] in ["-", "-9", "N"]:
+						if loc[i] in bads:
 							new_snps[i].append(-9)
 
 						elif loc[i] == ref:
@@ -921,6 +910,8 @@ class GenotypeData:
 			numpy.ndarray: One-hot encoded data.
 		"""
 
+		#NOTE: gaps and all IUPAC ambigs >2 chars treated as missing
+		#NOTE: THIS WILL NEED TO BE CHANGED FOR POLYPLOIDS
 		if self.filetype == "phylip" and encodings_dict is None:
 			onehot_dict = {
 				"A": [1.0, 0.0, 0.0, 0.0],
@@ -935,6 +926,10 @@ class GenotypeData:
 				"Y": [0.0, 0.5, 0.0, 0.5],
 				"S": [0.0, 0.0, 0.5, 0.5],
 				"-": [0.0, 0.0, 0.0, 0.0],
+				"V": [0.0, 0.0, 0.0, 0.0],
+				"H": [0.0, 0.0, 0.0, 0.0],
+				"D": [0.0, 0.0, 0.0, 0.0],
+				"B": [0.0, 0.0, 0.0, 0.0],
 			}
 
 		elif (
