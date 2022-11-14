@@ -718,6 +718,8 @@ class GenotypeData:
 
 		# TODO: valid_sites is now deprecated.
 		valid_sites = np.ones(len(snps[0]))
+		bads = ["-", "-9", "N", "V", "H", "D", "B"]
+		
 		for j in range(0, len(snps[0])):
 			loc = list()
 			for i in range(0, len(snps)):
@@ -741,7 +743,6 @@ class GenotypeData:
 					ref = sequence_tools.get_major_allele(loc, vcf=vcf)
 					ref = str(ref[0])
 					alt = None
-					bads = ["-", "-9", "N", "V", "H", "D", "B"]
 
 					if vcf:
 						for i in range(0, len(snps)):
