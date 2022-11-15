@@ -16,6 +16,7 @@ from impute.simple_imputers.simple_imputers import ImputePhylo
 from impute.simple_imputers.simple_imputers import ImputeNMF
 from impute.simple_imputers.simple_imputers import ImputeAlleleFreq
 
+sys.setrecursionlimit(10**7)
 
 def main():
 	data = GenotypeData(
