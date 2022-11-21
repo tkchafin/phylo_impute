@@ -78,6 +78,8 @@ class ImputePhylo(GenotypeData):
 
 		qmatrix (str or None, optional): Path to file containing only a Rate Matrix Q table. Not required if ``genotype_data`` is defined with the qmatrix or qmatrix_iqtree option. Defaults to None.
 
+		minbr (float or None, optional): Minimum branch length. Defaults to 0.0000000001
+
 		str_encodings (Dict[str, int], optional): Integer encodings used in STRUCTURE-formatted file. Should be a dictionary with keys=nucleotides and values=integer encodings. The missing data encoding should also be included. Argument is ignored if using a PHYLIP-formatted file. Defaults to {"A": 1, "C": 2, "G": 3, "T": 4, "N": -9}
 
 		prefix (str, optional): Prefix to use with output files.
@@ -121,6 +123,7 @@ class ImputePhylo(GenotypeData):
 		qmatrix: Optional[str] = None,
 		siterates: Optional[str] = None,
 		siterates_iqtree: Optional[str] = None,
+		minbr: Optional[float] = 0.0000000001,
 		str_encodings: Dict[str, int] = {
 			"A": 1,
 			"C": 2,
@@ -146,6 +149,7 @@ class ImputePhylo(GenotypeData):
 		self.str_encodings = str_encodings
 		self.prefix = prefix
 		self.save_plots = save_plots
+		self.minbr = minbr
 		self.disable_progressbar = disable_progressbar
 		self.column_subset = kwargs.get("column_subset", None)
 		self.validation_mode = kwargs.get("validation_mode", False)
@@ -157,7 +161,7 @@ class ImputePhylo(GenotypeData):
 		data, tree, q, site_rates = self._parse_arguments(genotype_data)
 
 		if self.validation_mode == False:
-			imputed012 = self.impute_phylo(tree, data, q, site_rates)
+			imputed012 = self.impute_phylo(tree, data, q, site_rates, minbr=self.minbr)
 
 			imputed_filename = genotype_data.decode_imputed(
 				imputed012, write_output=True, prefix=prefix
@@ -183,7 +187,7 @@ class ImputePhylo(GenotypeData):
 			)
 
 		else:
-			self.imputed = self.impute_phylo(tree, data, q, site_rates)
+			self.imputed = self.impute_phylo(tree, data, q, site_rates, minbr=self.minbr)
 
 
 	def impute_phylo(
@@ -192,6 +196,7 @@ class ImputePhylo(GenotypeData):
 		genotypes: Dict[str, List[Union[str, int]]],
 		Q: pd.DataFrame,
 		site_rates=None,
+		minbr=0.0000000001
 	) -> pd.DataFrame:
 		"""Imputes genotype values with a guide tree.
 
@@ -217,6 +222,8 @@ class ImputePhylo(GenotypeData):
 			Q (pandas.DataFrame): Rate Matrix Q from .iqtree or separate file.
 
 			site_rates (List): Site-specific substitution rates (used to weight per-site Q)
+
+			minbr (float) : Minimum branch length (those below this value will be treated as == minbr)
 
 		Returns:
 			pandas.DataFrame: Imputed genotypes.
@@ -283,7 +290,10 @@ class ImputePhylo(GenotypeData):
 					# get branch length to child
 					# bl = child.edge.length
 					# get transition probs
-					pt = self._transition_probs(site_Q, child.dist)
+					d = child.dist
+					if d < minbr:
+						d=minbr
+					pt = self._transition_probs(site_Q, d)
 					if child.is_leaf():
 						if child.name in genotypes:
 							if child.name in bads:

@@ -719,7 +719,7 @@ class GenotypeData:
 		# TODO: valid_sites is now deprecated.
 		valid_sites = np.ones(len(snps[0]))
 		bads = ["-", "-9", "N", "V", "H", "D", "B"]
-		
+
 		for j in range(0, len(snps[0])):
 			loc = list()
 			for i in range(0, len(snps)):
@@ -768,11 +768,11 @@ class GenotypeData:
 
 				# If >2 alleles
 				elif num_alleles > 2:
-					warnings.warn(
-						f" SNP column {j+1} had >2 alleles and was forced to "
-						f"be bi-allelic. If that is not what you want, please "
-						f"fix or remove the column and re-run.\n"
-					)
+					# warnings.warn(
+					# 	f" SNP column {j+1} had >2 alleles and was forced to "
+					# 	f"be bi-allelic. If that is not what you want, please "
+					# 	f"fix or remove the column and re-run.\n"
+					# )
 					all_alleles = sequence_tools.get_major_allele(loc, vcf=vcf)
 					all_alleles = [str(x[0]) for x in all_alleles]
 					ref = all_alleles.pop(0)
