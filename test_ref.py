@@ -21,11 +21,16 @@ def main():
 	prefix="test"
 	data = GenotypeData(
 		filename="/Users/tyler/programs/scripts/test_files/internal_gaps.phylip",
-		filetype="phylip",
-		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap"
+		filetype="phylip"
 	)
-	sim=SimGenotypeData(data, prop_missing=0.2, strategy="random")
+	# get ref and remove from dataset
 	ref_data=data.get_sample_012("C2.TEST")
+	data.remove_sample("C2.TEST")
+
+	# simulate missing data
+	sim=SimGenotypeData(data, prop_missing=0.2, strategy="random")
+
+	# run reference imputation
 	imputed=ImputeReference(genotype_data=sim, reference=ref_data, prefix=prefix+"_phylo")
 	np.savetxt(prefix+"_acc.tsv", np.array([sim.accuracy(imputed)]), fmt='%-10.5f')
 	np.savetxt(prefix+"_accBySite.tsv", sim.accuracy_by_site(imputed), fmt='%-10.5f')

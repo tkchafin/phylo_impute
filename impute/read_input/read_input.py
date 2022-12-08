@@ -1026,6 +1026,17 @@ class GenotypeData:
 		sample_index=self.samples.index(sample)
 		return(self.snps[sample_index])
 
+	def remove_sample(self, sample):
+		sample_index=self.samples.index(sample)
+		del self.samples[sample_index]
+		del self.snps[sample_index]
+		if self.gaps is not None:
+			self.gaps = np.delete(self.gaps, sample_index, 0)
+		self.onehot = np.delete(self.onehot, sample_index, 0)
+		if self.pops and len(self.pops) > 0:
+			del self.pops[sample_index]
+		self.num_inds = self.num_inds - 1
+
 	def decode_imputed(self, X, write_output=True, imputed_gaps=False, prefix="output"):
 		"""Decode 012-encoded imputed data to STRUCTURE or PHYLIP format.
 

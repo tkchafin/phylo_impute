@@ -93,17 +93,29 @@ class SimGenotypeData(GenotypeData):
 			raise TypeError("genotype_data cannot be NoneType")
 		else:
 			self.genotype_data = copy.deepcopy(genotype_data)
-			super().__init__(
-				filename=self.genotype_data.filename,
-				filetype=self.genotype_data.filetype,
-				popmapfile=self.genotype_data.popmapfile,
-				guidetree=self.genotype_data.guidetree,
-				qmatrix_iqtree=self.genotype_data.qmatrix_iqtree,
-				qmatrix=self.genotype_data.qmatrix,
-				siterates=self.genotype_data.siterates,
-				siterates_iqtree=self.genotype_data.siterates_iqtree,
-				verbose=False,
-			)
+			self.filename = genotype_data.filename
+			self.filetype = genotype_data.filetype
+			self.popmapfile = genotype_data.popmapfile
+			self.guidetree = genotype_data.guidetree
+			self.qmatrix_iqtree = genotype_data.qmatrix_iqtree
+			self.qmatrix = genotype_data.qmatrix
+			self.siterates = genotype_data.siterates
+			self.siterates_iqtree = genotype_data.siterates_iqtree
+			self.verbose = genotype_data.verbose
+
+			self.snpsdict = genotype_data.snpsdict
+			self.samples = genotype_data.samples
+			self.snps = genotype_data.snps
+			self.gaps = genotype_data.gaps
+			self.pops = genotype_data.pops
+			self.onehot = genotype_data.onehot
+			self.ref = genotype_data.ref
+			self.alt = genotype_data.alt
+			self.num_snps = genotype_data.num_snps
+			self.num_inds = genotype_data.num_inds
+			self.q = genotype_data.q
+			self.site_rates = genotype_data.site_rates
+			self.tree = genotype_data.tree
 
 			if self.prop_missing is None:
 				raise TypeError("prop_missing cannot be NoneType")
