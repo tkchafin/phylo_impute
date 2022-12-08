@@ -22,7 +22,8 @@ def main():
 	data = GenotypeData(
 		filename="/Users/tyler/programs/scripts/test_files/internal_gaps.phylip",
 		filetype="phylip",
-		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap"
+		popmapfile="/Users/tyler/programs/scripts/test_files/internal_gaps.popmap",
+		reference=
 	)
 	sim=SimGenotypeData(data, prop_missing=0.2, strategy="random")
 	imputed=ImputeAlleleFreq(genotype_data=sim, by_populations=True, prefix=prefix+"_phylo")

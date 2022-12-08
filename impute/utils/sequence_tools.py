@@ -107,7 +107,7 @@ def get_major_allele(l, num=None, vcf=False):
 	# Returns two most common non-ambiguous bases
 	# Makes sure the least common base isn't N or -9
 	if vcf:
-		return [x[0] for x in rets if x[0] != "-9"]
+		return [x[0] for x in rets if x[0] != "-9" and x[0] != "N"]
 	else:
 		return [x[0] for x in rets if x[0] in ["A", "T", "G", "C"]]
 

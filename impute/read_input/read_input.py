@@ -1022,6 +1022,10 @@ class GenotypeData:
 			if sample in my_popmap:
 				self.pops.append(my_popmap[sample])
 
+	def get_sample_012(self, sample):
+		sample_index=self.samples.index(sample)
+		return(self.snps[sample_index])
+
 	def decode_imputed(self, X, write_output=True, imputed_gaps=False, prefix="output"):
 		"""Decode 012-encoded imputed data to STRUCTURE or PHYLIP format.
 
