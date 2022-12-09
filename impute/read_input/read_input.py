@@ -621,9 +621,10 @@ class GenotypeData:
 
 		# Error handling if incorrect number of individuals in header.
 		if len(self.samples) != num_inds:
-			raise ValueError(
-				"Incorrect number of individuals listed in header\n"
-			)
+			#raise ValueError(
+			#	"Incorrect number of individuals listed in header\n"
+			#)
+			print("WARNING: Incorrect number of individuals listed in phylip header")
 
 	def get_gap_mask(self, snps: List[List[str]]):
 		self.gaps = np.zeros((len(snps), len(snps[0])))
