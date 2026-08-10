@@ -127,3 +127,15 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+
+# SNPio output
+snpio_output/
+
+# Validation (moved to separate repo)
+validation/
