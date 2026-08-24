@@ -98,6 +98,20 @@ def test_mask_excludes_reference_sample():
         assert sample != "ref"
 
 
+def test_min_posterior_validation():
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "phylo_impute.cli",
+            "--input", "dummy.phy", "--treefile", "dummy.nwk",
+            "--qmatrix", "dummy.iqtree", "--min-posterior", "1.5",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "min-posterior" in result.stderr
+
+
 def test_accuracy_table_with_reference(capsys):
     original = {"s1": ["A", "C", "G"], "s2": ["T", "C", "A"]}
     imputed = {"s1": ["A", "C", "G"], "s2": ["T", "C", "A"]}

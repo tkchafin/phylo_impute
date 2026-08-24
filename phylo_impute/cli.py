@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
+import numpy as np
+
 from phylo_impute import __version__
 from phylo_impute.utils import is_missing
 
@@ -117,6 +119,19 @@ def build_parser() -> argparse.ArgumentParser:
             "(position i in the reference = site i in the alignment). For "
             "SNP-based formats, this means the reference must contain only "
             "the SNP columns in the same order, not the full genome."
+        ),
+    )
+
+    # Posterior filter
+    parser.add_argument(
+        "--min-posterior",
+        type=float,
+        default=None,
+        metavar="PROB",
+        help=(
+            "Minimum posterior probability threshold for imputation. Sites "
+            "where the maximum posterior is below this value retain their "
+            "missing value instead of being imputed. (default: off)"
         ),
     )
 
@@ -288,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.evaluate is not None and not (0 < args.evaluate < 1):
         parser.error("--evaluate must be between 0 and 1 (exclusive)")
 
+    if args.min_posterior is not None and not (0 < args.min_posterior <= 1):
+        parser.error("--min-posterior must be between 0 (exclusive) and 1 (inclusive)")
+
     if (args.reference or args.reference_fasta) and args.evaluate is None:
         parser.error("--reference and --reference-fasta require --evaluate")
 
@@ -426,7 +444,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Missing values to impute: {n_missing}")
 
-    # Impute
+    # In evaluate mode, impute everything (no min_posterior) so accuracy
+    # can be measured on all masked sites. The posterior filter is applied
+    # afterwards to only the truly-missing sites.
+    impute_min_posterior = None if masked_positions is not None else args.min_posterior
+
     from phylo_impute.core import phylogenetic_imputation, repair_and_scale_q
 
     if args.diploid:
@@ -462,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
             genotypes=genotypes,
             q_matrix=q10,
             site_rates=site_rates,
+            min_posterior=impute_min_posterior,
         )
         elapsed = time.perf_counter() - t0
     else:
@@ -478,11 +501,19 @@ def main(argv: list[str] | None = None) -> int:
             genotypes=genotypes,
             q_matrix=q_matrix,
             site_rates=site_rates,
+            min_posterior=impute_min_posterior,
         )
         elapsed = time.perf_counter() - t0
 
+    n_imputed = sum(
+        1 for key, post in imputed_likelihoods.items()
+        if not is_missing(imputed_genotypes[key[0]][key[1]])
+    )
+    n_filtered = len(imputed_likelihoods) - n_imputed
     print(f"Imputation complete in {elapsed:.2f}s")
-    print(f"  Imputed {len(imputed_likelihoods)} missing values")
+    print(f"  Imputed {n_imputed} missing values")
+    if n_filtered > 0:
+        print(f"  Retained {n_filtered} sites as missing (below --min-posterior {args.min_posterior})")
 
     # Evaluation report
     if masked_positions is not None:
@@ -496,7 +527,19 @@ def main(argv: list[str] | None = None) -> int:
             reference_seq=reference_seq,
         )
 
-    # Write output
+        # Restore artificially masked sites to their original values
+        # and apply min_posterior filter to truly-missing sites
+        masked_set = set(masked_positions)
+        for sample, site_i in masked_positions:
+            imputed_genotypes[sample][site_i] = original_genotypes[sample][site_i]
+
+        if args.min_posterior is not None:
+            for (sample, site_i), posterior in imputed_likelihoods.items():
+                if (sample, site_i) in masked_set:
+                    continue
+                if np.max(posterior) < args.min_posterior:
+                    imputed_genotypes[sample][site_i] = "N"
+
     from phylo_impute.io import write_imputed
 
     output_path = f"{prefix}_imputed.{output_fmt}"

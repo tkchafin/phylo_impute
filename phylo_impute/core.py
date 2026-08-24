@@ -163,6 +163,7 @@ def phylogenetic_imputation(
     q_matrix: pd.DataFrame,
     site_rates: Optional[List[float]] = None,
     batch_size: int = 5000,
+    min_posterior: Optional[float] = None,
 ) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, int], np.ndarray]]:
     """Two-pass message passing for phylogenetic imputation.
 
@@ -172,6 +173,9 @@ def phylogenetic_imputation(
         q_matrix: 4x4 rate matrix (A,C,G,T indexed DataFrame).
         site_rates: Optional per-site evolutionary rates.
         batch_size: Max missing sites to process at once (controls memory).
+        min_posterior: If set, only impute sites where the maximum posterior
+            probability meets or exceeds this threshold. Sites below the
+            threshold retain their original missing value.
 
     Returns:
         (imputed_genotypes, imputed_likelihoods) where imputed_likelihoods
@@ -258,6 +262,7 @@ def phylogenetic_imputation(
                 batch_sites,
                 root_prior,
                 tree,
+                min_posterior,
             )
         else:
             _, batch_liks = _two_pass_variable_rates(
@@ -273,14 +278,15 @@ def phylogenetic_imputation(
                 batch_rates,
                 root_prior,
                 tree,
+                min_posterior,
             )
 
         imputed_likelihoods.update(batch_liks)
 
-    # Verify no missing values remain (for tree-matched samples)
-    df = pd.DataFrame.from_dict(filt_genotypes, orient="index")
-    if df.map(is_missing).any().any():
-        raise AssertionError("Imputation failed. Missing values remain.")
+    if min_posterior is None:
+        df = pd.DataFrame.from_dict(filt_genotypes, orient="index")
+        if df.map(is_missing).any().any():
+            raise AssertionError("Imputation failed. Missing values remain.")
 
     return _merge_non_tree(filt_genotypes), imputed_likelihoods
 
@@ -297,6 +303,7 @@ def _two_pass_uniform_rate(
     missing_sites,
     root_prior,
     tree,
+    min_posterior=None,
 ):
     """Two-pass message passing with uniform rate across all sites."""
     down_liks = {}
@@ -360,6 +367,8 @@ def _two_pass_uniform_rate(
         for k, site_i in enumerate(sample_missing_sites):
             posterior = tip_post[k].copy()
             imputed_likelihoods[(sample, int(site_i))] = posterior
+            if min_posterior is not None and np.max(posterior) < min_posterior:
+                continue
             filt_genotypes[sample][int(site_i)] = NUC_MAP[int(calls[k])]
 
     return filt_genotypes, imputed_likelihoods
@@ -378,6 +387,7 @@ def _two_pass_variable_rates(
     missing_rates,
     root_prior,
     tree,
+    min_posterior=None,
 ):
     """Two-pass message passing with per-site variable rates.
 
@@ -462,6 +472,8 @@ def _two_pass_variable_rates(
             for k, site_i in enumerate(sample_group_sites):
                 posterior = tip_post[k].copy()
                 imputed_likelihoods[(sample, int(site_i))] = posterior
+                if min_posterior is not None and np.max(posterior) < min_posterior:
+                    continue
                 filt_genotypes[sample][int(site_i)] = NUC_MAP[int(calls[k])]
 
     return filt_genotypes, imputed_likelihoods
@@ -625,6 +637,7 @@ def phylogenetic_imputation_diploid(
     genotypes: Dict[str, List[str]],
     q_matrix: pd.DataFrame,
     site_rates: Optional[List[float]] = None,
+    min_posterior: Optional[float] = None,
 ) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, int], np.ndarray]]:
     """Two-pass message passing for diploid genotype imputation.
 
@@ -636,6 +649,9 @@ def phylogenetic_imputation_diploid(
         genotypes: Dict mapping sample name -> list of IUPAC genotype chars.
         q_matrix: 10x10 rate matrix (GENOTYPE_STATES indexed DataFrame).
         site_rates: Optional per-site evolutionary rates.
+        min_posterior: If set, only impute sites where the maximum posterior
+            probability meets or exceeds this threshold. Sites below the
+            threshold retain their original missing value.
 
     Returns:
         (imputed_genotypes, imputed_likelihoods) where imputed_likelihoods
@@ -759,6 +775,8 @@ def phylogenetic_imputation_diploid(
             for k, site_i in enumerate(sample_missing_sites):
                 posterior = tip_post[k].copy()
                 imputed_likelihoods[(sample, int(site_i))] = posterior
+                if min_posterior is not None and np.max(posterior) < min_posterior:
+                    continue
                 filt_genotypes[sample][int(site_i)] = GT_INDEX_TO_IUPAC[int(calls[k])]
 
     else:
@@ -838,13 +856,15 @@ def phylogenetic_imputation_diploid(
                 for k, site_i in enumerate(sample_group_sites):
                     posterior = tip_post[k].copy()
                     imputed_likelihoods[(sample, int(site_i))] = posterior
+                    if min_posterior is not None and np.max(posterior) < min_posterior:
+                        continue
                     filt_genotypes[sample][int(site_i)] = GT_INDEX_TO_IUPAC[int(calls[k])]
 
-    # Verify no missing values remain (for tree-matched samples)
-    for sample in filt_genotypes:
-        for site_i, val in enumerate(filt_genotypes[sample]):
-            if is_missing(val):
-                raise AssertionError("Diploid imputation failed. Missing values remain.")
+    if min_posterior is None:
+        for sample in filt_genotypes:
+            for site_i, val in enumerate(filt_genotypes[sample]):
+                if is_missing(val):
+                    raise AssertionError("Diploid imputation failed. Missing values remain.")
 
     return _merge_non_tree_dip(filt_genotypes), imputed_likelihoods
 
@@ -908,7 +928,7 @@ def ctmc_pruning_loglik_diploid(
 
 
 # ---------------------------------------------------------------------------
-# Simple baseline imputation methods
+# Baseline imputation methods
 # ---------------------------------------------------------------------------
 
 
@@ -979,5 +999,4 @@ def reference_imputation(
     return result
 
 
-# Re-export for convenience
 from phylo_impute.utils import get_iupac_full  # noqa: E402, F401

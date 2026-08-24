@@ -63,6 +63,7 @@ phylo-impute --input FILE --treefile FILE --qmatrix FILE [options]
 | `--seed INT` | Random seed for `--evaluate` masking (default: 42) |
 | `--reference SAMPLE` | Use this dataset sample as reference-fill baseline (requires `--evaluate`) |
 | `--reference-fasta PATH` | External FASTA reference for reference-fill baseline (requires `--evaluate`; must match alignment dimensions) |
+| `--min-posterior PROB` | Only impute sites where the max posterior probability >= PROB; sites below the threshold stay as missing (default: off) |
 | `--siterates FILE` | Per-site evolutionary rates file (one rate per site, same order as input) |
 | `--format FMT` | Input format: `vcf`, `phylip`, `structure`, `genepop` (default: infer from extension) |
 | `--output-format FMT` | Output format: `vcf`, `phylip`, `structure`, `genepop`, `fasta` (default: same as input) |

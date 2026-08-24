@@ -254,7 +254,7 @@ def parse_site_rates(path: str) -> List[float]:
             if len(parts) >= 2:
                 rates.append(float(parts[1]))
     else:
-        # Simple: one rate per line
+        # One rate per line
         for line in lines:
             parts = line.split()
             rates.append(float(parts[0]))

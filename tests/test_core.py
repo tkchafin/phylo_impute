@@ -144,6 +144,56 @@ class TestPhylogeneticImputation:
         with pytest.raises(ValueError, match="No samples in common"):
             phylogenetic_imputation(simple_tree, genotypes, q)
 
+    def test_min_posterior_retains_uncertain(self, simple_tree, jc_q_matrix):
+        """With a very high threshold, uncertain sites should stay missing."""
+        genotypes = {
+            "A": ["A", "N"],
+            "B": ["C", "N"],
+            "C": ["G", "N"],
+            "D": ["T", "N"],
+        }
+        q = repair_and_scale_q(jc_q_matrix)
+        # All four tips disagree at site 1 -> posterior ~0.25 per state
+        imputed, likelihoods = phylogenetic_imputation(
+            simple_tree, genotypes, q, min_posterior=0.99
+        )
+        from phylo_impute.utils import is_missing
+        # Site 1 should remain missing for all samples (no state > 0.99)
+        for sample in ["A", "B", "C", "D"]:
+            assert is_missing(imputed[sample][1])
+        # Posteriors should still be recorded
+        assert len(likelihoods) > 0
+
+    def test_min_posterior_none_imputes_all(self, simple_tree, genotypes_with_missing, jc_q_matrix):
+        """Default (min_posterior=None) should impute everything."""
+        q = repair_and_scale_q(jc_q_matrix)
+        imputed, _ = phylogenetic_imputation(
+            simple_tree, genotypes_with_missing, q, min_posterior=None
+        )
+        from phylo_impute.utils import is_missing
+        for sample, seq in imputed.items():
+            for val in seq:
+                assert not is_missing(val)
+
+    def test_min_posterior_zero_imputes_all(self, star_tree_unanimous, jc_q_matrix):
+        """min_posterior near zero should impute everything."""
+        tree, genotypes = star_tree_unanimous
+        q = repair_and_scale_q(jc_q_matrix)
+        imputed, _ = phylogenetic_imputation(tree, genotypes, q, min_posterior=0.01)
+        assert imputed["tip1"][0] == "C"
+
+    def test_min_posterior_posteriors_always_recorded(self, simple_tree, jc_q_matrix):
+        """Posteriors are recorded even for filtered sites."""
+        genotypes = {
+            "A": ["N"], "B": ["A"], "C": ["C"], "D": ["G"],
+        }
+        q = repair_and_scale_q(jc_q_matrix)
+        imputed, likelihoods = phylogenetic_imputation(
+            simple_tree, genotypes, q, min_posterior=0.99
+        )
+        assert ("A", 0) in likelihoods
+        assert abs(likelihoods[("A", 0)].sum() - 1.0) < 1e-10
+
 
 class TestCTMCPruningLoglik:
     def test_finite(self, simple_tree, jc_q_matrix):

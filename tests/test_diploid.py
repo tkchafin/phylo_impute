@@ -399,6 +399,36 @@ class TestPhylogeneticImputationDiploid:
             for site_i, val in enumerate(seq):
                 assert val in valid_codes, f"Invalid code '{val}' at {sample}[{site_i}]"
 
+    def test_min_posterior_retains_uncertain(self, q10_matrix):
+        """High threshold should leave ambiguous sites as missing."""
+        from phylo_impute.utils import is_missing
+        tree = tt.tree("((t1:0.5,t2:0.5):0.5,(t3:0.5,t4:0.5):0.5);")
+        genotypes = {
+            "t1": ["N"],
+            "t2": ["A"],   # AA
+            "t3": ["C"],   # CC
+            "t4": ["G"],   # GG
+        }
+        imputed, likelihoods = phylogenetic_imputation_diploid(
+            tree=tree, genotypes=genotypes, q_matrix=q10_matrix,
+            min_posterior=0.99,
+        )
+        # Three tips with different homozygous states and long branches ->
+        # posterior should be spread out, so t1 stays missing
+        assert is_missing(imputed["t1"][0])
+        assert ("t1", 0) in likelihoods
+
+    def test_min_posterior_none_imputes_all(self, diploid_tree, masked_genotypes, q10_matrix):
+        """Default should impute everything."""
+        from phylo_impute.utils import is_missing
+        imputed, _ = phylogenetic_imputation_diploid(
+            tree=diploid_tree, genotypes=masked_genotypes, q_matrix=q10_matrix,
+            min_posterior=None,
+        )
+        for sample, seq in imputed.items():
+            for val in seq:
+                assert not is_missing(val)
+
 
 # --- Test: Diploid log-likelihood ---
 
