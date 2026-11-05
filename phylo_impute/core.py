@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import operator
+from collections.abc import ItemsView, Mapping, ValuesView
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -157,6 +159,356 @@ def bin_site_rates(
     return bin_means[bin_idx - 1].tolist()
 
 
+_NUC_CALLS = np.array([NUC_MAP[i] for i in range(4)], dtype=object)
+_GT_CALLS = np.array([GT_INDEX_TO_IUPAC[i] for i in range(10)], dtype=object)
+_ITER_CHUNK = 1 << 16
+
+
+def _index_dtype(n):
+    return np.int32 if n < np.iinfo(np.int32).max else np.int64
+
+
+class PosteriorMap(Mapping):
+    """Read-only mapping ``(sample, site) -> posterior array``, backed by arrays.
+
+    Returned by :func:`phylogenetic_imputation` and
+    :func:`phylogenetic_imputation_diploid` in place of the plain dict used
+    before 0.2.0. Reading works as before: ``post[(sample, site)]``, ``in``,
+    ``len``, ``.get``, and iteration, ``.keys()``, ``.items()`` and
+    ``.values()`` in the same order. Assignment is not supported. Posteriors
+    are stored as one array row per imputed cell rather than one Python
+    object per cell.
+
+    Vectorised callers can use ``sample_names``, ``sample_index``, ``sites``
+    and ``posteriors`` directly. ``to_dict()`` returns a plain dict.
+    """
+
+    def __init__(self, sample_names, sample_index, sites, posteriors, n_sites):
+        self._names = list(sample_names)
+        self._row_of = {s: i for i, s in enumerate(self._names)}
+        self._rows = np.asarray(sample_index)
+        self._sites = np.asarray(sites)
+        self._post = np.asarray(posteriors, dtype=float)
+        self._n_sites = int(n_sites)
+        self._index = None  # (n_samples, n_sites) cell -> row; built on first lookup
+
+    @property
+    def sample_names(self) -> List[str]:
+        """Sample names; ``sample_index`` indexes into this list."""
+        return list(self._names)
+
+    @property
+    def sample_index(self) -> np.ndarray:
+        """For each imputed cell, the index of its sample in ``sample_names``."""
+        return self._rows
+
+    @property
+    def sites(self) -> np.ndarray:
+        """For each imputed cell, its 0-based site (column) index."""
+        return self._sites
+
+    @property
+    def posteriors(self) -> np.ndarray:
+        """``(n_cells, n_states)`` posterior probabilities, one row per imputed cell."""
+        return self._post
+
+    def to_dict(self) -> Dict[Tuple[str, int], np.ndarray]:
+        """Plain dict holding a copy of each posterior."""
+        return {key: post.copy() for key, post in self.items()}
+
+    def _find(self, key) -> int:
+        if not isinstance(key, tuple) or len(key) != 2:
+            return -1
+        sample, site = key
+        try:
+            row = self._row_of[sample]
+        except (KeyError, TypeError):
+            return -1
+        try:
+            site = operator.index(site)
+        except TypeError:
+            try:
+                as_int = int(site)
+            except (TypeError, ValueError, OverflowError):
+                return -1
+            if as_int != site:
+                return -1
+            site = as_int
+        if not 0 <= site < self._n_sites:
+            return -1
+        if self._index is None:
+            dtype = _index_dtype(len(self._rows))
+            index = np.full((len(self._names), self._n_sites), -1, dtype=dtype)
+            index[self._rows, self._sites] = np.arange(len(self._rows), dtype=dtype)
+            self._index = index
+        return int(self._index[row, site])
+
+    def __getitem__(self, key):
+        k = self._find(key)
+        if k < 0:
+            raise KeyError(key)
+        return self._post[k]
+
+    def __contains__(self, key):
+        return self._find(key) >= 0
+
+    def __len__(self):
+        return len(self._rows)
+
+    def __iter__(self):
+        names = self._names
+        for start in range(0, len(self._rows), _ITER_CHUNK):
+            stop = start + _ITER_CHUNK
+            rows = self._rows[start:stop].tolist()
+            sites = self._sites[start:stop].tolist()
+            for r, s in zip(rows, sites):
+                yield (names[r], s)
+
+    def items(self):
+        return _PosteriorItemsView(self)
+
+    def values(self):
+        return _PosteriorValuesView(self)
+
+    def __repr__(self):
+        return (
+            f"{type(self).__name__}({len(self)} imputed cells, "
+            f"{self._post.shape[1]} states)"
+        )
+
+
+class _PosteriorItemsView(ItemsView):
+    def __iter__(self):
+        post = self._mapping._post
+        for k, key in enumerate(self._mapping):
+            yield key, post[k]
+
+
+class _PosteriorValuesView(ValuesView):
+    def __iter__(self):
+        post = self._mapping._post
+        for k in range(len(post)):
+            yield post[k]
+
+
+def _encode_tokens(seq_array, lik_fn):
+    """Map every cell of ``seq_array`` to a code over its distinct tokens.
+
+    Per-token work is then done once per distinct token instead of once per
+    cell. Returns:
+        codes: integer array with ``seq_array``'s shape.
+        lik_table: ``lik_fn(tokens)``, the leaf likelihood row of each token.
+        impute_flag: token exactly equals one of ``MISSING_TOKENS``; these
+            cells are imputed.
+        still_missing: ``is_missing(token)``, used by the completeness check.
+    """
+    flat = seq_array.ravel()
+    codes, tokens = pd.factorize(flat, use_na_sentinel=False)
+    tokens = np.asarray(tokens, dtype=object)
+    if not all(isinstance(t, str) for t in tokens):
+        # Non-string tokens can compare equal yet print differently (e.g. -9
+        # and -9.0); key on type too so each token keeps its own handling.
+        seen: Dict[Tuple[type, object], int] = {}
+        codes = np.fromiter(
+            (seen.setdefault((type(x), x), len(seen)) for x in flat),
+            dtype=np.intp,
+            count=flat.size,
+        )
+        tokens = np.empty(len(seen), dtype=object)
+        for i, (_, x) in enumerate(seen):
+            tokens[i] = x
+    codes = codes.astype(np.min_scalar_type(max(len(tokens) - 1, 0)), copy=False)
+    impute_flag = np.zeros(len(tokens), dtype=bool)
+    for token in MISSING_TOKENS:
+        impute_flag |= tokens == token
+    still_missing = np.array([is_missing(t) for t in tokens], dtype=bool)
+    return codes.reshape(seq_array.shape), lik_fn(tokens), impute_flag, still_missing
+
+
+class _PosteriorSink:
+    """Preallocated per-cell posterior store, filled in imputation order."""
+
+    def __init__(self, n_cells, n_samples, n_sites, n_states):
+        self.rows = np.empty(n_cells, dtype=_index_dtype(n_samples))
+        self.sites = np.empty(n_cells, dtype=_index_dtype(n_sites))
+        self.post = np.empty((n_cells, n_states), dtype=float)
+        self.n = 0
+
+    def add(self, row_i, sites, post):
+        k, m = self.n, len(sites)
+        self.rows[k:k + m] = row_i
+        self.sites[k:k + m] = sites
+        self.post[k:k + m] = post
+        self.n = k + m
+
+
+def _two_pass(postorder_nodes, preorder_nodes, P_by_node, leaf_lik, n_cols,
+              n_states, root_prior, root_idx):
+    """Down (postorder) and up (preorder) messages for one block of columns.
+
+    ``leaf_lik(node)`` returns a leaf's ``(n_cols, n_states)`` likelihoods.
+    """
+    down_liks = {}
+    for node in postorder_nodes:
+        if node.is_leaf():
+            down_liks[node.idx] = leaf_lik(node)
+        else:
+            msg = np.ones((n_cols, n_states), dtype=float)
+            for child in node.children:
+                P = P_by_node[child.idx]
+                msg *= down_liks[child.idx] @ P.T
+            down_liks[node.idx] = normalize_rows(msg)
+
+    up_liks = {
+        root_idx: np.broadcast_to(root_prior, (n_cols, n_states)).copy()
+    }
+    for node in preorder_nodes:
+        if node.is_root():
+            continue
+        parent = node.up
+        sib_prod = np.ones((n_cols, n_states), dtype=float)
+        for sib in parent.children:
+            if sib.idx == node.idx:
+                continue
+            P_sib = P_by_node[sib.idx]
+            sib_prod *= down_liks[sib.idx] @ P_sib.T
+        parent_msg = up_liks[parent.idx] * sib_prod
+        P = P_by_node[node.idx]
+        up_liks[node.idx] = normalize_rows(parent_msg @ P)
+    return down_liks, up_liks
+
+
+def _impute_alignment(
+    tree,
+    filt_genotypes,
+    qcache,
+    root_prior,
+    site_rates,
+    batch_size,
+    min_posterior,
+    n_states,
+    lik_fn,
+    call_symbols,
+    fail_msg,
+):
+    """Shared core of the haploid and diploid imputation functions.
+
+    Message passing runs on blocks of columns (``batch_size`` missing sites at
+    a time, or all at once when it is None), and within a block on groups of
+    sites sharing a rate. Encoding the input, recording posteriors and
+    writing calls are done on arrays, never one cell at a time.
+    """
+    sample_names = list(filt_genotypes.keys())
+    sample_to_row = {sample: i for i, sample in enumerate(sample_names)}
+    num_sites = len(next(iter(filt_genotypes.values())))
+    seq_array = np.array(
+        [filt_genotypes[sample] for sample in sample_names], dtype=object
+    )
+    if seq_array.ndim != 2:
+        raise ValueError("All genotype sequences must have the same length.")
+
+    codes, lik_table, impute_flag, still_missing = _encode_tokens(seq_array, lik_fn)
+    missing_mask = impute_flag[codes]
+    missing_sites = np.where(missing_mask.any(axis=0))[0]
+
+    if len(missing_sites) == 0:
+        empty = PosteriorMap(
+            sample_names, [], [], np.empty((0, n_states)), num_sites
+        )
+        return filt_genotypes, empty
+
+    missing_rates = None
+    if site_rates is not None:
+        missing_rates = np.array([site_rates[i] for i in missing_sites])
+
+    postorder_nodes = list(tree.treenode.traverse("postorder"))
+    preorder_nodes = list(tree.treenode.traverse("preorder"))
+    root_idx = tree.treenode.idx
+
+    leaf_by_sample = {
+        node.name: node
+        for node in postorder_nodes
+        if node.is_leaf() and node.name in filt_genotypes
+    }
+    tips = [
+        (row_i, leaf_by_sample[sample])
+        for sample, row_i in sample_to_row.items()
+        if sample in leaf_by_sample
+    ]
+    tip_rows = np.array([row_i for row_i, _ in tips], dtype=np.intp)
+    sink = _PosteriorSink(
+        int(missing_mask[tip_rows].sum()), len(sample_names), num_sites, n_states
+    )
+    fill = 1.0 / n_states
+
+    step = len(missing_sites) if batch_size is None else batch_size
+    for batch_start in range(0, len(missing_sites), step):
+        batch_end = min(batch_start + step, len(missing_sites))
+        batch_sites = missing_sites[batch_start:batch_end]
+
+        batch_rates = None
+        if missing_rates is not None:
+            batch_rates = missing_rates[batch_start:batch_end]
+
+        if batch_rates is None or np.all(batch_rates == batch_rates[0]):
+            rate = 1.0 if batch_rates is None else float(batch_rates[0])
+            groups = [(rate, batch_sites)]
+        else:
+            groups = [
+                (float(rate_val), batch_sites[batch_rates == rate_val])
+                for rate_val in np.unique(batch_rates)
+            ]
+
+        for rate, cols in groups:
+            if len(cols) == 0:
+                continue
+            P_by_node = {
+                node.idx: qcache.P(max(node.dist, MIN_BRANCH_LENGTH), rate=rate)
+                for node in postorder_nodes
+                if not node.is_root()
+            }
+
+            def leaf_lik(node, cols=cols):
+                row_i = sample_to_row.get(node.name)
+                if row_i is None:
+                    return np.full((len(cols), n_states), fill, dtype=float)
+                return lik_table[codes[row_i, cols]]
+
+            down_liks, up_liks = _two_pass(
+                postorder_nodes, preorder_nodes, P_by_node, leaf_lik,
+                len(cols), n_states, root_prior, root_idx,
+            )
+
+            # Tip reconstruction: one vectorised step per sample.
+            for row_i, node in tips:
+                pos = np.flatnonzero(missing_mask[row_i, cols])
+                if len(pos) == 0:
+                    continue
+                tip_post = normalize_rows(
+                    up_liks[node.idx][pos] * down_liks[node.idx][pos]
+                )
+                sites = cols[pos]
+                sink.add(row_i, sites, tip_post)
+                calls = np.argmax(tip_post, axis=1)
+                if min_posterior is not None:
+                    keep = ~(tip_post.max(axis=1) < min_posterior)
+                    sites, calls = sites[keep], calls[keep]
+                seq_array[row_i, sites] = call_symbols[calls]
+
+    if sink.n != len(sink.rows):
+        raise AssertionError("Internal error: not every missing cell was visited.")
+
+    if min_posterior is None:
+        remaining = still_missing[codes]
+        remaining[sink.rows, sink.sites] = False  # these now hold a call
+        if remaining.any():
+            raise AssertionError(fail_msg)
+
+    imputed = {sample: seq_array[i].tolist() for i, sample in enumerate(sample_names)}
+    posteriors = PosteriorMap(sample_names, sink.rows, sink.sites, sink.post, num_sites)
+    return imputed, posteriors
+
+
 def phylogenetic_imputation(
     tree: tt.ToyTree,
     genotypes: Dict[str, List[str]],
@@ -164,7 +516,7 @@ def phylogenetic_imputation(
     site_rates: Optional[List[float]] = None,
     batch_size: int = 5000,
     min_posterior: Optional[float] = None,
-) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, int], np.ndarray]]:
+) -> Tuple[Dict[str, List[str]], PosteriorMap]:
     """Two-pass message passing for phylogenetic imputation.
 
     Args:
@@ -180,6 +532,9 @@ def phylogenetic_imputation(
     Returns:
         (imputed_genotypes, imputed_likelihoods) where imputed_likelihoods
         maps (sample_name, site_index) -> posterior probability array (4,).
+        It is a read-only :class:`PosteriorMap` (a ``Mapping``); its
+        ``posteriors``, ``sample_index`` and ``sites`` arrays give the same
+        data for vectorised use.
     """
     qcache = QCache(q_matrix)
     root_prior = stationary_pi_from_q(q_matrix.to_numpy())
@@ -201,282 +556,20 @@ def phylogenetic_imputation(
             f"len(site_rates)={len(site_rates)} != num_sites={num_sites}"
         )
 
-    sample_names = list(filt_genotypes.keys())
-    sample_to_row = {sample: i for i, sample in enumerate(sample_names)}
-    seq_array = np.array(
-        [filt_genotypes[sample] for sample in sample_names], dtype=object
+    imputed, imputed_likelihoods = _impute_alignment(
+        tree,
+        filt_genotypes,
+        qcache,
+        root_prior,
+        site_rates,
+        batch_size,
+        min_posterior,
+        n_states=4,
+        lik_fn=likelihood_matrix_for_chars,
+        call_symbols=_NUC_CALLS,
+        fail_msg="Imputation failed. Missing values remain.",
     )
-    missing_mask = np.zeros(seq_array.shape, dtype=bool)
-    for token in MISSING_TOKENS:
-        missing_mask |= seq_array == token
-
-    missing_sites = np.where(missing_mask.any(axis=0))[0]
-    imputed_likelihoods: Dict[Tuple[str, int], np.ndarray] = {}
-
-    if len(missing_sites) == 0:
-        return _merge_non_tree(filt_genotypes), imputed_likelihoods
-
-    # If site_rates provided, get rates for missing sites
-    missing_rates = None
-    if site_rates is not None:
-        missing_rates = np.array([site_rates[i] for i in missing_sites])
-
-    postorder_nodes = list(tree.treenode.traverse("postorder"))
-    preorder_nodes = list(tree.treenode.traverse("preorder"))
-
-    leaf_by_sample = {
-        node.name: node
-        for node in postorder_nodes
-        if node.is_leaf() and node.name in filt_genotypes
-    }
-
-    # Process in batches to limit memory (each batch allocates per-node arrays)
-    for batch_start in range(0, len(missing_sites), batch_size):
-        batch_end = min(batch_start + batch_size, len(missing_sites))
-        batch_sites = missing_sites[batch_start:batch_end]
-
-        # Restrict missing_mask to only columns in this batch
-        batch_mask = np.zeros_like(missing_mask)
-        batch_mask[:, batch_sites] = missing_mask[:, batch_sites]
-
-        batch_rates = None
-        if missing_rates is not None:
-            batch_rates = missing_rates[batch_start:batch_end]
-
-        if batch_rates is None or np.all(batch_rates == batch_rates[0]):
-            rate = 1.0 if batch_rates is None else float(batch_rates[0])
-            P_by_node = {
-                node.idx: qcache.P(max(node.dist, MIN_BRANCH_LENGTH), rate=rate)
-                for node in postorder_nodes
-                if not node.is_root()
-            }
-            _, batch_liks = _two_pass_uniform_rate(
-                postorder_nodes,
-                preorder_nodes,
-                P_by_node,
-                leaf_by_sample,
-                filt_genotypes,
-                sample_to_row,
-                seq_array,
-                batch_mask,
-                batch_sites,
-                root_prior,
-                tree,
-                min_posterior,
-            )
-        else:
-            _, batch_liks = _two_pass_variable_rates(
-                postorder_nodes,
-                preorder_nodes,
-                qcache,
-                leaf_by_sample,
-                filt_genotypes,
-                sample_to_row,
-                seq_array,
-                batch_mask,
-                batch_sites,
-                batch_rates,
-                root_prior,
-                tree,
-                min_posterior,
-            )
-
-        imputed_likelihoods.update(batch_liks)
-
-    if min_posterior is None:
-        df = pd.DataFrame.from_dict(filt_genotypes, orient="index")
-        if df.map(is_missing).any().any():
-            raise AssertionError("Imputation failed. Missing values remain.")
-
-    return _merge_non_tree(filt_genotypes), imputed_likelihoods
-
-
-def _two_pass_uniform_rate(
-    postorder_nodes,
-    preorder_nodes,
-    P_by_node,
-    leaf_by_sample,
-    filt_genotypes,
-    sample_to_row,
-    seq_array,
-    missing_mask,
-    missing_sites,
-    root_prior,
-    tree,
-    min_posterior=None,
-):
-    """Two-pass message passing with uniform rate across all sites."""
-    down_liks = {}
-
-    for node in postorder_nodes:
-        if node.is_leaf():
-            if node.name not in filt_genotypes:
-                lik = np.full((len(missing_sites), 4), 0.25, dtype=float)
-            else:
-                row_i = sample_to_row[node.name]
-                lik = likelihood_matrix_for_chars(seq_array[row_i, missing_sites])
-            down_liks[node.idx] = lik
-        else:
-            msg = np.ones((len(missing_sites), 4), dtype=float)
-            for child in node.children:
-                P = P_by_node[child.idx]
-                msg *= down_liks[child.idx] @ P.T
-            down_liks[node.idx] = normalize_rows(msg)
-
-    up_liks = {
-        tree.treenode.idx: np.broadcast_to(
-            root_prior, (len(missing_sites), 4)
-        ).copy()
-    }
-
-    for node in preorder_nodes:
-        if node.is_root():
-            continue
-        parent = node.up
-        sib_prod = np.ones((len(missing_sites), 4), dtype=float)
-        for sib in parent.children:
-            if sib.idx == node.idx:
-                continue
-            P_sib = P_by_node[sib.idx]
-            sib_prod *= down_liks[sib.idx] @ P_sib.T
-        parent_msg = up_liks[parent.idx] * sib_prod
-        P = P_by_node[node.idx]
-        up_liks[node.idx] = normalize_rows(parent_msg @ P)
-
-    # Tip reconstruction
-    missing_site_to_row = {
-        site_i: row_i for row_i, site_i in enumerate(missing_sites)
-    }
-    imputed_likelihoods = {}
-
-    for sample, row_i in sample_to_row.items():
-        sample_missing_sites = np.where(missing_mask[row_i])[0]
-        if len(sample_missing_sites) == 0:
-            continue
-        if sample not in leaf_by_sample:
-            continue
-        node = leaf_by_sample[sample]
-        site_rows = np.array(
-            [missing_site_to_row[site_i] for site_i in sample_missing_sites]
-        )
-        tip_post = normalize_rows(
-            up_liks[node.idx][site_rows] * down_liks[node.idx][site_rows]
-        )
-        calls = np.argmax(tip_post, axis=1)
-
-        for k, site_i in enumerate(sample_missing_sites):
-            posterior = tip_post[k].copy()
-            imputed_likelihoods[(sample, int(site_i))] = posterior
-            if min_posterior is not None and np.max(posterior) < min_posterior:
-                continue
-            filt_genotypes[sample][int(site_i)] = NUC_MAP[int(calls[k])]
-
-    return filt_genotypes, imputed_likelihoods
-
-
-def _two_pass_variable_rates(
-    postorder_nodes,
-    preorder_nodes,
-    qcache,
-    leaf_by_sample,
-    filt_genotypes,
-    sample_to_row,
-    seq_array,
-    missing_mask,
-    missing_sites,
-    missing_rates,
-    root_prior,
-    tree,
-    min_posterior=None,
-):
-    """Two-pass message passing with per-site variable rates.
-
-    Groups sites by unique rate values and processes each group as a batch.
-    """
-    unique_rates = np.unique(missing_rates)
-    imputed_likelihoods = {}
-
-    for rate_val in unique_rates:
-        rate_mask = missing_rates == rate_val
-        group_sites = missing_sites[rate_mask]
-
-        if len(group_sites) == 0:
-            continue
-
-        P_by_node = {
-            node.idx: qcache.P(max(node.dist, MIN_BRANCH_LENGTH), rate=float(rate_val))
-            for node in postorder_nodes
-            if not node.is_root()
-        }
-
-        down_liks = {}
-        for node in postorder_nodes:
-            if node.is_leaf():
-                if node.name not in filt_genotypes:
-                    lik = np.full((len(group_sites), 4), 0.25, dtype=float)
-                else:
-                    row_i = sample_to_row[node.name]
-                    lik = likelihood_matrix_for_chars(seq_array[row_i, group_sites])
-                down_liks[node.idx] = lik
-            else:
-                msg = np.ones((len(group_sites), 4), dtype=float)
-                for child in node.children:
-                    P = P_by_node[child.idx]
-                    msg *= down_liks[child.idx] @ P.T
-                down_liks[node.idx] = normalize_rows(msg)
-
-        up_liks = {
-            tree.treenode.idx: np.broadcast_to(
-                root_prior, (len(group_sites), 4)
-            ).copy()
-        }
-
-        for node in preorder_nodes:
-            if node.is_root():
-                continue
-            parent = node.up
-            sib_prod = np.ones((len(group_sites), 4), dtype=float)
-            for sib in parent.children:
-                if sib.idx == node.idx:
-                    continue
-                P_sib = P_by_node[sib.idx]
-                sib_prod *= down_liks[sib.idx] @ P_sib.T
-            parent_msg = up_liks[parent.idx] * sib_prod
-            P = P_by_node[node.idx]
-            up_liks[node.idx] = normalize_rows(parent_msg @ P)
-
-        # Tip reconstruction for this rate group
-        group_site_to_row = {
-            site_i: row_i for row_i, site_i in enumerate(group_sites)
-        }
-        group_site_set = set(group_sites)
-
-        for sample, row_i in sample_to_row.items():
-            sample_missing = np.where(missing_mask[row_i])[0]
-            sample_group_sites = np.array(
-                [s for s in sample_missing if s in group_site_set]
-            )
-            if len(sample_group_sites) == 0:
-                continue
-            if sample not in leaf_by_sample:
-                continue
-            node = leaf_by_sample[sample]
-            site_rows = np.array(
-                [group_site_to_row[si] for si in sample_group_sites]
-            )
-            tip_post = normalize_rows(
-                up_liks[node.idx][site_rows] * down_liks[node.idx][site_rows]
-            )
-            calls = np.argmax(tip_post, axis=1)
-
-            for k, site_i in enumerate(sample_group_sites):
-                posterior = tip_post[k].copy()
-                imputed_likelihoods[(sample, int(site_i))] = posterior
-                if min_posterior is not None and np.max(posterior) < min_posterior:
-                    continue
-                filt_genotypes[sample][int(site_i)] = NUC_MAP[int(calls[k])]
-
-    return filt_genotypes, imputed_likelihoods
+    return _merge_non_tree(imputed), imputed_likelihoods
 
 
 def ctmc_pruning_loglik(
@@ -638,7 +731,7 @@ def phylogenetic_imputation_diploid(
     q_matrix: pd.DataFrame,
     site_rates: Optional[List[float]] = None,
     min_posterior: Optional[float] = None,
-) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, int], np.ndarray]]:
+) -> Tuple[Dict[str, List[str]], PosteriorMap]:
     """Two-pass message passing for diploid genotype imputation.
 
     Same algorithm as phylogenetic_imputation but with 10 states
@@ -655,7 +748,8 @@ def phylogenetic_imputation_diploid(
 
     Returns:
         (imputed_genotypes, imputed_likelihoods) where imputed_likelihoods
-        maps (sample_name, site_index) -> posterior probability array (10,).
+        maps (sample_name, site_index) -> posterior probability array (10,),
+        as a read-only :class:`PosteriorMap`.
     """
     qcache = QCache(q_matrix)
     root_prior = stationary_pi_from_q(q_matrix.to_numpy())
@@ -676,197 +770,20 @@ def phylogenetic_imputation_diploid(
             f"len(site_rates)={len(site_rates)} != num_sites={num_sites}"
         )
 
-    sample_names = list(filt_genotypes.keys())
-    sample_to_row = {sample: i for i, sample in enumerate(sample_names)}
-    seq_array = np.array(
-        [filt_genotypes[sample] for sample in sample_names], dtype=object
+    imputed, imputed_likelihoods = _impute_alignment(
+        tree,
+        filt_genotypes,
+        qcache,
+        root_prior,
+        site_rates,
+        None,  # all missing sites in one block
+        min_posterior,
+        n_states=10,
+        lik_fn=likelihood_matrix_for_genotypes,
+        call_symbols=_GT_CALLS,
+        fail_msg="Diploid imputation failed. Missing values remain.",
     )
-    missing_mask = np.zeros(seq_array.shape, dtype=bool)
-    for token in MISSING_TOKENS:
-        missing_mask |= seq_array == token
-
-    missing_sites = np.where(missing_mask.any(axis=0))[0]
-    imputed_likelihoods: Dict[Tuple[str, int], np.ndarray] = {}
-
-    if len(missing_sites) == 0:
-        return _merge_non_tree_dip(filt_genotypes), imputed_likelihoods
-
-    missing_rates = None
-    if site_rates is not None:
-        missing_rates = np.array([site_rates[i] for i in missing_sites])
-
-    postorder_nodes = list(tree.treenode.traverse("postorder"))
-    preorder_nodes = list(tree.treenode.traverse("preorder"))
-
-    leaf_by_sample = {
-        node.name: node
-        for node in postorder_nodes
-        if node.is_leaf() and node.name in filt_genotypes
-    }
-
-    n_states = 10
-
-    if missing_rates is None or np.all(missing_rates == missing_rates[0]):
-        rate = 1.0 if missing_rates is None else float(missing_rates[0])
-        P_by_node = {
-            node.idx: qcache.P(max(node.dist, MIN_BRANCH_LENGTH), rate=rate)
-            for node in postorder_nodes
-            if not node.is_root()
-        }
-
-        # --- Postorder (upward) pass ---
-        down_liks = {}
-        for node in postorder_nodes:
-            if node.is_leaf():
-                if node.name not in filt_genotypes:
-                    lik = np.full((len(missing_sites), n_states), 1.0 / n_states, dtype=float)
-                else:
-                    row_i = sample_to_row[node.name]
-                    lik = likelihood_matrix_for_genotypes(seq_array[row_i, missing_sites])
-                down_liks[node.idx] = lik
-            else:
-                msg = np.ones((len(missing_sites), n_states), dtype=float)
-                for child in node.children:
-                    P = P_by_node[child.idx]
-                    msg *= down_liks[child.idx] @ P.T
-                down_liks[node.idx] = normalize_rows(msg)
-
-        # --- Preorder (downward) pass ---
-        up_liks = {
-            tree.treenode.idx: np.broadcast_to(
-                root_prior, (len(missing_sites), n_states)
-            ).copy()
-        }
-
-        for node in preorder_nodes:
-            if node.is_root():
-                continue
-            parent = node.up
-            sib_prod = np.ones((len(missing_sites), n_states), dtype=float)
-            for sib in parent.children:
-                if sib.idx == node.idx:
-                    continue
-                P_sib = P_by_node[sib.idx]
-                sib_prod *= down_liks[sib.idx] @ P_sib.T
-            parent_msg = up_liks[parent.idx] * sib_prod
-            P = P_by_node[node.idx]
-            up_liks[node.idx] = normalize_rows(parent_msg @ P)
-
-        # --- Tip reconstruction ---
-        missing_site_to_row = {
-            site_i: row_i for row_i, site_i in enumerate(missing_sites)
-        }
-
-        for sample, row_i in sample_to_row.items():
-            sample_missing_sites = np.where(missing_mask[row_i])[0]
-            if len(sample_missing_sites) == 0:
-                continue
-            if sample not in leaf_by_sample:
-                continue
-            node = leaf_by_sample[sample]
-            site_rows = np.array(
-                [missing_site_to_row[site_i] for site_i in sample_missing_sites]
-            )
-            tip_post = normalize_rows(
-                up_liks[node.idx][site_rows] * down_liks[node.idx][site_rows]
-            )
-            calls = np.argmax(tip_post, axis=1)
-
-            for k, site_i in enumerate(sample_missing_sites):
-                posterior = tip_post[k].copy()
-                imputed_likelihoods[(sample, int(site_i))] = posterior
-                if min_posterior is not None and np.max(posterior) < min_posterior:
-                    continue
-                filt_genotypes[sample][int(site_i)] = GT_INDEX_TO_IUPAC[int(calls[k])]
-
-    else:
-        # Variable site rates: group by unique rate
-        unique_rates = np.unique(missing_rates)
-        for rate_val in unique_rates:
-            rate_mask = missing_rates == rate_val
-            group_sites = missing_sites[rate_mask]
-            if len(group_sites) == 0:
-                continue
-
-            P_by_node = {
-                node.idx: qcache.P(max(node.dist, MIN_BRANCH_LENGTH), rate=float(rate_val))
-                for node in postorder_nodes
-                if not node.is_root()
-            }
-
-            down_liks = {}
-            for node in postorder_nodes:
-                if node.is_leaf():
-                    if node.name not in filt_genotypes:
-                        lik = np.full((len(group_sites), n_states), 1.0 / n_states, dtype=float)
-                    else:
-                        row_i = sample_to_row[node.name]
-                        lik = likelihood_matrix_for_genotypes(seq_array[row_i, group_sites])
-                    down_liks[node.idx] = lik
-                else:
-                    msg = np.ones((len(group_sites), n_states), dtype=float)
-                    for child in node.children:
-                        P = P_by_node[child.idx]
-                        msg *= down_liks[child.idx] @ P.T
-                    down_liks[node.idx] = normalize_rows(msg)
-
-            up_liks = {
-                tree.treenode.idx: np.broadcast_to(
-                    root_prior, (len(group_sites), n_states)
-                ).copy()
-            }
-
-            for node in preorder_nodes:
-                if node.is_root():
-                    continue
-                parent = node.up
-                sib_prod = np.ones((len(group_sites), n_states), dtype=float)
-                for sib in parent.children:
-                    if sib.idx == node.idx:
-                        continue
-                    P_sib = P_by_node[sib.idx]
-                    sib_prod *= down_liks[sib.idx] @ P_sib.T
-                parent_msg = up_liks[parent.idx] * sib_prod
-                P = P_by_node[node.idx]
-                up_liks[node.idx] = normalize_rows(parent_msg @ P)
-
-            group_site_to_row = {
-                site_i: row_i for row_i, site_i in enumerate(group_sites)
-            }
-            group_site_set = set(group_sites)
-
-            for sample, row_i in sample_to_row.items():
-                sample_missing = np.where(missing_mask[row_i])[0]
-                sample_group_sites = np.array(
-                    [s for s in sample_missing if s in group_site_set]
-                )
-                if len(sample_group_sites) == 0:
-                    continue
-                if sample not in leaf_by_sample:
-                    continue
-                node = leaf_by_sample[sample]
-                site_rows = np.array(
-                    [group_site_to_row[si] for si in sample_group_sites]
-                )
-                tip_post = normalize_rows(
-                    up_liks[node.idx][site_rows] * down_liks[node.idx][site_rows]
-                )
-                calls = np.argmax(tip_post, axis=1)
-
-                for k, site_i in enumerate(sample_group_sites):
-                    posterior = tip_post[k].copy()
-                    imputed_likelihoods[(sample, int(site_i))] = posterior
-                    if min_posterior is not None and np.max(posterior) < min_posterior:
-                        continue
-                    filt_genotypes[sample][int(site_i)] = GT_INDEX_TO_IUPAC[int(calls[k])]
-
-    if min_posterior is None:
-        for sample in filt_genotypes:
-            for site_i, val in enumerate(filt_genotypes[sample]):
-                if is_missing(val):
-                    raise AssertionError("Diploid imputation failed. Missing values remain.")
-
-    return _merge_non_tree_dip(filt_genotypes), imputed_likelihoods
+    return _merge_non_tree_dip(imputed), imputed_likelihoods
 
 
 def ctmc_pruning_loglik_diploid(

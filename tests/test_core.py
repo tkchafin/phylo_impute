@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from phylo_impute.core import (
+    PosteriorMap,
     QCache,
     ctmc_pruning_loglik,
     phylogenetic_imputation,
@@ -193,6 +194,69 @@ class TestPhylogeneticImputation:
         )
         assert ("A", 0) in likelihoods
         assert abs(likelihoods[("A", 0)].sum() - 1.0) < 1e-10
+
+
+class TestPosteriorMap:
+    @pytest.fixture
+    def result(self, simple_tree, genotypes_with_missing, jc_q_matrix):
+        q = repair_and_scale_q(jc_q_matrix)
+        return phylogenetic_imputation(simple_tree, genotypes_with_missing, q)
+
+    def test_keys_are_the_missing_cells(self, result, genotypes_with_missing):
+        _, post = result
+        from collections.abc import Mapping
+        assert isinstance(post, (Mapping, PosteriorMap))
+        expected = {
+            (s, i) for s, seq in genotypes_with_missing.items()
+            for i, v in enumerate(seq) if v == "N"
+        }
+        assert set(post) == expected
+        assert len(post) == len(expected)
+        assert all(type(site) is int for _, site in post)
+
+    def test_arrays_match_mapping(self, result):
+        _, post = result
+        names = post.sample_names
+        keys = [(names[r], int(s)) for r, s in zip(post.sample_index, post.sites)]
+        assert keys == list(post)
+        for k, (key, value) in enumerate(post.items()):
+            np.testing.assert_array_equal(post[key], value)
+            np.testing.assert_array_equal(post.posteriors[k], value)
+        assert post.posteriors.shape == (len(post), 4)
+        d = post.to_dict()
+        assert isinstance(d, dict) and list(d) == list(post)
+
+    def test_absent_and_malformed_keys(self, result):
+        _, post = result
+        for key in [("A", 0), ("A", -1), ("A", 99), ("nope", 4), "A", ("A",), ("A", "4")]:
+            assert key not in post
+            assert post.get(key) is None
+        with pytest.raises(KeyError):
+            post[("A", 0)]
+        assert ("A", np.int64(4)) in post  # numpy ints work like ints
+
+    def test_read_only(self, result):
+        _, post = result
+        with pytest.raises(TypeError):
+            post[("A", 4)] = np.zeros(4)
+
+    def test_input_not_mutated(self, simple_tree, genotypes_with_missing, jc_q_matrix):
+        import copy
+        before = copy.deepcopy(genotypes_with_missing)
+        phylogenetic_imputation(simple_tree, genotypes_with_missing, repair_and_scale_q(jc_q_matrix))
+        assert genotypes_with_missing == before
+
+    def test_batching_does_not_change_answers(self, simple_tree, genotypes_with_missing, jc_q_matrix):
+        q = repair_and_scale_q(jc_q_matrix)
+        rates = [0.5, 1.0, 2.0, 1.0, 0.5]
+        g1, p1 = phylogenetic_imputation(simple_tree, genotypes_with_missing, q, site_rates=rates)
+        g2, p2 = phylogenetic_imputation(
+            simple_tree, genotypes_with_missing, q, site_rates=rates, batch_size=1
+        )
+        assert g1 == g2
+        assert set(p1) == set(p2)
+        for key in p1:
+            np.testing.assert_allclose(p1[key], p2[key], rtol=0, atol=1e-12)
 
 
 class TestCTMCPruningLoglik:

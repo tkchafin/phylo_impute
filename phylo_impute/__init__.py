@@ -1,4 +1,5 @@
 from phylo_impute.core import (
+    PosteriorMap,
     QCache,
     bin_site_rates,
     build_q10_from_gtr,
@@ -23,4 +24,4 @@ from phylo_impute.io import (
     write_imputed,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

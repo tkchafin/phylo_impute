@@ -127,7 +127,14 @@ from phylo_impute import (
     repair_and_scale_q,
     q_from_iqtree,
 )
+
+imputed, posteriors = phylogenetic_imputation(tree, genotypes, q)
+posteriors[("sample1", 42)]   # posterior over A,C,G,T for one imputed cell
+posteriors.posteriors         # (n_imputed_cells, 4) array, one row per cell
+posteriors.sample_index, posteriors.sites  # which sample/site each row is
 ```
+
+The posteriors come back as a read-only `PosteriorMap`. It works like the dict returned before 0.2.0 for indexing, `in`, `len` and iteration (same order). Its arrays are there for vectorised use, and `to_dict()` gives a plain dict.
 
 ## Testing
 

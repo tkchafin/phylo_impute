@@ -27,7 +27,9 @@ def test_version():
         text=True,
     )
     assert result.returncode == 0
-    assert "0.1.0" in result.stdout
+    from phylo_impute import __version__
+
+    assert __version__ in result.stdout
 
 
 def test_missing_required_args():

@@ -505,10 +505,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         elapsed = time.perf_counter() - t0
 
-    n_imputed = sum(
-        1 for key, post in imputed_likelihoods.items()
-        if not is_missing(imputed_genotypes[key[0]][key[1]])
-    )
+    # A cell gets a call unless its max posterior is below the threshold
+    # (calls are never missing tokens), so count that on the posterior array.
+    max_post = imputed_likelihoods.posteriors.max(axis=1, initial=0.0)
+    if impute_min_posterior is None:
+        n_imputed = len(imputed_likelihoods)
+    else:
+        n_imputed = int(np.count_nonzero(~(max_post < impute_min_posterior)))
     n_filtered = len(imputed_likelihoods) - n_imputed
     print(f"Imputation complete in {elapsed:.2f}s")
     print(f"  Imputed {n_imputed} missing values")
@@ -534,11 +537,14 @@ def main(argv: list[str] | None = None) -> int:
             imputed_genotypes[sample][site_i] = original_genotypes[sample][site_i]
 
         if args.min_posterior is not None:
-            for (sample, site_i), posterior in imputed_likelihoods.items():
+            names = imputed_likelihoods.sample_names
+            rows = imputed_likelihoods.sample_index
+            sites = imputed_likelihoods.sites
+            for k in np.flatnonzero(max_post < args.min_posterior):
+                sample, site_i = names[rows[k]], int(sites[k])
                 if (sample, site_i) in masked_set:
                     continue
-                if np.max(posterior) < args.min_posterior:
-                    imputed_genotypes[sample][site_i] = "N"
+                imputed_genotypes[sample][site_i] = "N"
 
     from phylo_impute.io import write_imputed
 
